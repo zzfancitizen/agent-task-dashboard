@@ -1,13 +1,13 @@
 export const STATUS = {
-  open: { label: '待领取', tone: 'open' },
-  claimed: { label: '已领取', tone: 'active' },
-  running: { label: '执行中', tone: 'active' },
-  submitted: { label: '待验收', tone: 'review' },
-  accepted: { label: '已完成', tone: 'done' },
-  cancelled: { label: '已取消', tone: 'neutral' },
-  failed: { label: '执行失败', tone: 'failed' },
+  open: { label: 'Open', tone: 'open' },
+  claimed: { label: 'Claimed', tone: 'active' },
+  running: { label: 'Running', tone: 'active' },
+  submitted: { label: 'Awaiting review', tone: 'review' },
+  accepted: { label: 'Completed', tone: 'done' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
+  failed: { label: 'Failed', tone: 'failed' },
 };
-export const CATEGORIES = { code: '代码', docs: '文档', research: '调研' };
+export const CATEGORIES = { code: 'Code', docs: 'Docs', research: 'Research' };
 const AGENTS = ['codex', 'claude'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const COMMIT = /^[0-9a-f]{40}$/i;
@@ -16,27 +16,27 @@ const forbiddenControl = /[\u0000-\u001f\u007f]/;
 
 export function validateHostname(value) {
   if (typeof value !== 'string' || !value || value.length > 253 || !value.split('.').every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label))) {
-    throw new Error('GitHub hostname 无效，请使用域名，不包含协议、端口或路径。');
+    throw new Error('Invalid GitHub hostname. Enter a domain without a protocol, port, or path.');
   }
   return value.toLowerCase();
 }
 
 export function validateRepository(value) {
   if (typeof value !== 'string' || value.length > 200 || !/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/i.test(value) || ['.', '..'].includes(value.split('/')[1])) {
-    throw new Error('仓库格式应为 owner/repo。');
+    throw new Error('Repository must use the owner/repo format.');
   }
   return value;
 }
 
 function issueNumber(value) {
-  if (!Number.isSafeInteger(value) || value < 1) throw new Error('Issue 编号必须是正整数。');
+  if (!Number.isSafeInteger(value) || value < 1) throw new Error('Issue number must be a positive integer.');
   return value;
 }
 
 export function safeRelativePath(value, allowDirectory = false) {
-  if (typeof value !== 'string' || !value || value.length > 1024 || forbiddenControl.test(value) || /[\\%?#:]/.test(value) || value.startsWith('/')) throw new Error('路径必须为不含 .. 的相对路径。');
+  if (typeof value !== 'string' || !value || value.length > 1024 || forbiddenControl.test(value) || /[\\%?#:]/.test(value) || value.startsWith('/')) throw new Error('Path must be relative and must not contain .. segments.');
   const path = allowDirectory && value.endsWith('/') ? value.slice(0, -1) : value;
-  if (!path || path.split('/').some(part => !part || part === '.' || part === '..' || part.toLowerCase() === '.git')) throw new Error('路径必须为不含 .. 或 Git 元数据的相对路径。');
+  if (!path || path.split('/').some(part => !part || part === '.' || part === '..' || part.toLowerCase() === '.git')) throw new Error('Path must be relative and must not contain .. segments or Git metadata.');
   return value;
 }
 
@@ -48,14 +48,14 @@ export function githubURL(snapshot, path = '') {
 }
 
 export function taskRunURL(snapshot, number, agent) {
-  if (agent !== undefined && !AGENTS.includes(agent)) throw new Error('请选择兼容的 Agent。');
+  if (agent !== undefined && !AGENTS.includes(agent)) throw new Error('Choose a compatible Agent.');
   const params = new URLSearchParams({ repo: validateRepository(snapshot.repository), issue: String(issueNumber(number)), hostname: validateHostname(snapshot.hostname) });
   if (agent !== undefined) params.set('agent', agent);
   return `taskboard://run?${params}`;
 }
 
 export function taskCommand(snapshot, number, agent = 'codex') {
-  if (!AGENTS.includes(agent)) throw new Error('请选择兼容的 Agent。');
+  if (!AGENTS.includes(agent)) throw new Error('Choose a compatible Agent.');
   return `taskboard --repo ${validateRepository(snapshot.repository)} --hostname ${validateHostname(snapshot.hostname)} run ${issueNumber(number)} --agent ${agent}`;
 }
 
@@ -71,9 +71,9 @@ export function safeHTTPS(value) {
 
 export function repositoryURL(value, hostname) {
   const safe = safeHTTPS(value);
-  if (!safe) throw new Error('源仓库必须是有效的 HTTPS GitHub 仓库地址。');
+  if (!safe) throw new Error('Source repository must be a valid HTTPS GitHub repository URL.');
   const url = new URL(safe);
-  if (url.hostname !== validateHostname(hostname) || url.search || url.hash || url.pathname.endsWith('/') || url.pathname.endsWith('.git')) throw new Error('源仓库必须与当前 GitHub 域名一致，且使用 owner/repo 地址。');
+  if (url.hostname !== validateHostname(hostname) || url.search || url.hash || url.pathname.endsWith('/') || url.pathname.endsWith('.git')) throw new Error('Source repository must use the current GitHub hostname and an owner/repo URL.');
   validateRepository(url.pathname.slice(1));
   return `${url.origin}${url.pathname}`;
 }
@@ -111,11 +111,11 @@ export function taskCounts(tasks) {
 }
 
 export function executionDuration(seconds) {
-  if (!Number.isSafeInteger(seconds) || seconds < 1) return '未指定';
-  if (seconds < 60) return `${seconds} 秒`;
+  if (!Number.isSafeInteger(seconds) || seconds < 1) return 'Not specified';
+  if (seconds < 60) return `${seconds} sec`;
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
-  return remainder ? `${minutes} 分 ${remainder} 秒` : `${minutes} 分钟`;
+  return remainder ? `${minutes} min ${remainder} sec` : `${minutes} min`;
 }
 
 export function taskLeaderboards(snapshot) {
@@ -144,25 +144,25 @@ export function taskLeaderboards(snapshot) {
 }
 
 export function normalizeSnapshot(data) {
-  if (!data || data.schema_version !== 1 || !Array.isArray(data.tasks) || typeof data.demo !== 'boolean' || typeof data.generated_at !== 'string') throw new Error('任务快照格式不兼容，需要 schema_version 1。');
+  if (!data || data.schema_version !== 1 || !Array.isArray(data.tasks) || typeof data.demo !== 'boolean' || typeof data.generated_at !== 'string') throw new Error('Incompatible task snapshot. Expected schema_version 1.');
   const hostname = validateHostname(data.hostname);
   if (data.repository !== '') validateRepository(data.repository);
-  if (data.generated_at && !Number.isFinite(Date.parse(data.generated_at))) throw new Error('任务快照的同步时间无效。');
+  if (data.generated_at && !Number.isFinite(Date.parse(data.generated_at))) throw new Error('Task snapshot has an invalid sync time.');
   const seen = new Set();
   for (const task of data.tasks) {
-    if (!task || !Object.hasOwn(STATUS, task.status) || !task.spec || typeof task.spec.title !== 'string' || typeof task.spec.prompt !== 'string' || !Array.isArray(task.spec.execution?.compatible_agents) || !task.spec.execution.compatible_agents.length || task.spec.execution.compatible_agents.some(agent => !AGENTS.includes(agent))) throw new Error('任务快照包含无效任务，请重新生成。');
+    if (!task || !Object.hasOwn(STATUS, task.status) || !task.spec || typeof task.spec.title !== 'string' || typeof task.spec.prompt !== 'string' || !Array.isArray(task.spec.execution?.compatible_agents) || !task.spec.execution.compatible_agents.length || task.spec.execution.compatible_agents.some(agent => !AGENTS.includes(agent))) throw new Error('Task snapshot contains an invalid task. Regenerate the snapshot.');
     issueNumber(task.number);
-    if (seen.has(task.number)) throw new Error('任务快照包含重复的 Issue 编号。');
+    if (seen.has(task.number)) throw new Error('Task snapshot contains duplicate Issue numbers.');
     seen.add(task.number);
   }
-  if (data.tasks.length && !data.repository) throw new Error('任务快照缺少所属仓库。');
+  if (data.tasks.length && !data.repository) throw new Error('Task snapshot is missing its repository.');
   return { ...data, hostname };
 }
 
 function required(value, label, max = 40000) {
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`请填写${label}。`);
-  if (value.trim().length > max) throw new Error(`${label}过长；任务文件必须小于 48 KB。`);
-  if (value.includes('\0')) throw new Error(`${label}不能包含空字符。`);
+  if (typeof value !== 'string' || !value.trim()) throw new Error(`Enter ${label.toLowerCase()}.`);
+  if (value.trim().length > max) throw new Error(`${label} is too long. The task file must be smaller than 48 KB.`);
+  if (value.includes('\0')) throw new Error(`${label} must not contain null characters.`);
   return value.trim();
 }
 
@@ -172,47 +172,47 @@ function lines(value) {
 
 function boundedNumber(value, min, max, label) {
   const number = Number(value);
-  if (!Number.isInteger(number) || number < min || number > max) throw new Error(`${label}必须为 ${min}–${max} 的整数。`);
+  if (!Number.isInteger(number) || number < min || number > max) throw new Error(`${label} must be an integer from ${min} to ${max}.`);
   return number;
 }
 
 export function buildTaskExport(values, { hostname = 'github.com', taskId } = {}) {
-  if (!UUID.test(taskId)) throw new Error('任务 ID 无效，请重新打开发布表单。');
-  const title = required(values.title, '任务标题', 200);
-  const prompt = required(values.prompt, '任务说明');
-  const reason = required(values.delegation_reason, '委派原因', 4000);
-  const repository = repositoryURL(required(values.repository, '源仓库'), hostname);
-  const commit = required(values.base_commit, '基准提交');
-  if (!COMMIT.test(commit)) throw new Error('基准提交需要完整的 40 位 Git commit SHA，不能使用分支名。');
+  if (!UUID.test(taskId)) throw new Error('Invalid task ID. Reopen the publishing form.');
+  const title = required(values.title, 'Task title', 200);
+  const prompt = required(values.prompt, 'Task instructions');
+  const reason = required(values.delegation_reason, 'Delegation reason', 4000);
+  const repository = repositoryURL(required(values.repository, 'Source repository'), hostname);
+  const commit = required(values.base_commit, 'Base commit');
+  if (!COMMIT.test(commit)) throw new Error('Base commit must be a full 40-character Git commit SHA, not a branch name.');
   const writePaths = lines(values.write_paths);
-  if (!writePaths.length) throw new Error('至少指定一个允许修改的相对目录路径。');
+  if (!writePaths.length) throw new Error('Specify at least one relative directory path that may be modified.');
   writePaths.forEach(path => safeRelativePath(path, true));
   const agents = values.agents;
-  if (!Array.isArray(agents) || !agents.length || agents.some(agent => !AGENTS.includes(agent))) throw new Error('至少选择一个兼容的 Agent。');
-  const timeout = boundedNumber(values.timeout_minutes, 1, 240, '执行时限（分钟）');
-  const attempts = boundedNumber(values.max_attempts, 1, 5, '最多尝试次数');
+  if (!Array.isArray(agents) || !agents.length || agents.some(agent => !AGENTS.includes(agent))) throw new Error('Choose at least one compatible Agent.');
+  const timeout = boundedNumber(values.timeout_minutes, 1, 240, 'Execution time limit (minutes)');
+  const attempts = boundedNumber(values.max_attempts, 1, 5, 'Maximum attempts');
   const commands = lines(values.commands).map((line, index) => {
     let argv;
-    try { argv = JSON.parse(line); } catch { throw new Error(`第 ${index + 1} 条验收命令不是有效的 JSON 参数数组。`); }
-    if (!Array.isArray(argv) || !argv.length || argv.some(arg => typeof arg !== 'string' || !arg.trim() || arg.includes('\0'))) throw new Error(`第 ${index + 1} 条验收命令必须是非空字符串组成的 JSON 参数数组。`);
+    try { argv = JSON.parse(line); } catch { throw new Error(`Verification command ${index + 1} must be a valid JSON argument array.`); }
+    if (!Array.isArray(argv) || !argv.length || argv.some(arg => typeof arg !== 'string' || !arg.trim() || arg.includes('\0'))) throw new Error(`Verification command ${index + 1} must be a JSON argument array of nonempty strings.`);
     return argv;
   });
   const outputs = lines(values.required_outputs);
-  if (!outputs.length) throw new Error('至少指定一个必需的交付文件。');
+  if (!outputs.length) throw new Error('Specify at least one required output file.');
   outputs.forEach(path => safeRelativePath(path));
   let resources = [];
   const destinations = new Set();
   if (String(values.resources || '').trim()) {
-    try { resources = JSON.parse(values.resources); } catch { throw new Error('参考资源需要有效的 JSON 数组。'); }
-    if (!Array.isArray(resources)) throw new Error('参考资源需要有效的 JSON 数组。');
+    try { resources = JSON.parse(values.resources); } catch { throw new Error('Reference resources must be a valid JSON array.'); }
+    if (!Array.isArray(resources)) throw new Error('Reference resources must be a valid JSON array.');
     resources = resources.map((resource, index) => {
-      if (!resource || resource.type !== 'git_file') throw new Error(`资源 ${index + 1} 仅支持 git_file 类型。`);
+      if (!resource || resource.type !== 'git_file') throw new Error(`Resource ${index + 1} must use the git_file type.`);
       const url = repositoryURL(resource.repository, hostname);
-      if (!COMMIT.test(resource.commit)) throw new Error(`资源 ${index + 1} 需要 40 位 commit SHA。`);
-      if (!SHA256.test(resource.sha256)) throw new Error(`资源 ${index + 1} 需要 64 位 SHA-256。`);
+      if (!COMMIT.test(resource.commit)) throw new Error(`Resource ${index + 1} requires a 40-character commit SHA.`);
+      if (!SHA256.test(resource.sha256)) throw new Error(`Resource ${index + 1} requires a 64-character SHA-256.`);
       safeRelativePath(resource.path);
       safeRelativePath(resource.destination);
-      if (destinations.has(resource.destination)) throw new Error(`资源 ${index + 1} 的目标路径重复。`);
+      if (destinations.has(resource.destination)) throw new Error(`Resource ${index + 1} has a duplicate destination path.`);
       destinations.add(resource.destination);
       return { type: 'git_file', repository: url, commit: resource.commit.toLowerCase(), path: resource.path, destination: resource.destination, sha256: resource.sha256.toLowerCase() };
     });
@@ -220,9 +220,9 @@ export function buildTaskExport(values, { hostname = 'github.com', taskId } = {}
   const category = values.category || 'code';
   const size = values.size || 'M';
   const priority = values.priority || 'normal';
-  if (!Object.hasOwn(CATEGORIES, category) || !['S', 'M', 'L'].includes(size) || !['normal', 'high'].includes(priority)) throw new Error('任务分类、规模或优先级无效。');
+  if (!Object.hasOwn(CATEGORIES, category) || !['S', 'M', 'L'].includes(size) || !['normal', 'high'].includes(priority)) throw new Error('Invalid task category, size, or priority.');
   const reviewNotes = String(values.review_notes || '').trim();
-  if (reviewNotes.includes('\0')) throw new Error('验收备注不能包含空字符。');
+  if (reviewNotes.includes('\0')) throw new Error('Review notes must not contain null characters.');
   const task = {
     schema_version: 1, task_id: taskId, revision: 1, mode: 'subtask', title, prompt, delegation_reason: reason,
     source: { repository, base_commit: commit.toLowerCase(), workspace_patch: null, write_paths: [...new Set(writePaths)] },
@@ -230,17 +230,17 @@ export function buildTaskExport(values, { hostname = 'github.com', taskId } = {}
     acceptance: { commands, required_outputs: [...new Set(outputs)], review_notes: reviewNotes },
     category, size, priority,
   };
-  if (new TextEncoder().encode(JSON.stringify(task)).byteLength > 48 * 1024) throw new Error('任务文件超过 48 KB，请精简说明或资源。');
+  if (new TextEncoder().encode(JSON.stringify(task)).byteLength > 48 * 1024) throw new Error('Task file exceeds 48 KB. Shorten the instructions or reduce the resources.');
   return task;
 }
 
 export function relativeTime(value, now = Date.now()) {
   const timestamp = typeof value === 'number' ? value * 1000 : Date.parse(value);
-  if (!Number.isFinite(timestamp)) return '时间未知';
+  if (!Number.isFinite(timestamp)) return 'Unknown time';
   const minutes = Math.max(0, Math.floor((now - timestamp) / 60000));
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes} 分钟前`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} 小时前`;
-  if (minutes < 10080) return `${Math.floor(minutes / 1440)} 天前`;
-  return new Intl.DateTimeFormat('zh-CN', { month: 'short', day: 'numeric' }).format(timestamp);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)} hr ago`;
+  if (minutes < 10080) return `${Math.floor(minutes / 1440)} ${minutes < 2880 ? 'day' : 'days'} ago`;
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(timestamp);
 }

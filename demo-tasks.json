@@ -15,9 +15,9 @@
         "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000001",
         "revision": 1,
         "mode": "subtask",
-        "title": "为日期格式化工具补齐边界测试",
-        "prompt": "【虚构演示任务】\n覆盖跨时区、闰年和空值等边界，补齐可复现的测试用例，并验证现有行为。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 tests/date/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
-        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "title": "Add edge-case tests for date formatting",
+        "prompt": "[FICTIONAL DEMO TASK]\nCover time zones, leap years, and null values with reproducible tests, and verify the existing behavior.\n\nStart by reading resources/task-context.md and checking the existing implementation and conventions. Only modify files under tests/date/. Preserve existing public behavior. Record any out-of-scope issues in the unresolved items.\n\nWhen finished, run the verification commands and submit changes.patch, verification.json, and summary.md. This task is for interface demonstration only. Do not run it.",
+        "delegation_reason": "The inputs and change scope are clear. The task can be completed in a separate workspace, with the publisher reviewing the delivery. This record is a fictional demo.",
         "source": {
           "repository": "https://github.com/example-org/agent-relay-demo",
           "base_commit": "0000000000000000000000000000000000000001",
@@ -60,13 +60,13 @@
             "verification.json",
             "summary.md"
           ],
-          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+          "review_notes": "Check that all changes stay within the allowed paths and that the delivery describes verification results and unresolved items. This demo record does not represent a real execution."
         },
         "category": "code",
         "size": "S",
         "priority": "high"
       },
-      "digest": "0000000000000000000000000000000000000000000000000000000000000025",
+      "digest": "aa000c15f7cd64331cfb1acebc6f7227560417d641a7a105ff08c7b35a0ad44c",
       "status": "open",
       "attempt_count": 0,
       "attempt": null,
@@ -83,9 +83,9 @@
         "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000002",
         "revision": 1,
         "mode": "subtask",
-        "title": "整理组件库的快速上手文档",
-        "prompt": "【虚构演示任务】\n把安装、主题配置和常见用法整理为一份清晰的上手指南，检查所有示例命令。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 docs/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
-        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "title": "Write a quick-start guide for the component library",
+        "prompt": "[FICTIONAL DEMO TASK]\nCreate a clear guide to installation, theme configuration, and common usage. Check every example command.\n\nStart by reading resources/task-context.md and checking the existing implementation and conventions. Only modify files under docs/. Preserve existing public behavior. Record any out-of-scope issues in the unresolved items.\n\nWhen finished, run the verification commands and submit changes.patch, verification.json, and summary.md. This task is for interface demonstration only. Do not run it.",
+        "delegation_reason": "The inputs and change scope are clear. The task can be completed in a separate workspace, with the publisher reviewing the delivery. This record is a fictional demo.",
         "source": {
           "repository": "https://github.com/example-org/agent-relay-demo",
           "base_commit": "0000000000000000000000000000000000000002",
@@ -125,13 +125,13 @@
             "verification.json",
             "summary.md"
           ],
-          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+          "review_notes": "Check that all changes stay within the allowed paths and that the delivery describes verification results and unresolved items. This demo record does not represent a real execution."
         },
         "category": "docs",
         "size": "S",
         "priority": "normal"
       },
-      "digest": "0000000000000000000000000000000000000000000000000000000000000026",
+      "digest": "8c9ce85198a125cea17566c58876451f05452d8758313eb4957c804cb3536cc5",
       "status": "open",
       "attempt_count": 0,
       "attempt": null,
@@ -148,9 +148,9 @@
         "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000003",
         "revision": 1,
         "mode": "subtask",
-        "title": "对比任务队列的重试与恢复机制",
-        "prompt": "【虚构演示任务】\n阅读指定版本的设计文档，比较三种队列方案的重试、幂等与恢复机制，输出对照报告。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 research/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
-        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "title": "Compare task queue retry and recovery mechanisms",
+        "prompt": "[FICTIONAL DEMO TASK]\nRead the pinned design documents and compare retry, idempotency, and recovery across three queue designs. Deliver a comparison report.\n\nStart by reading resources/task-context.md and checking the existing implementation and conventions. Only modify files under research/. Preserve existing public behavior. Record any out-of-scope issues in the unresolved items.\n\nWhen finished, run the verification commands and submit changes.patch, verification.json, and summary.md. This task is for interface demonstration only. Do not run it.",
+        "delegation_reason": "The inputs and change scope are clear. The task can be completed in a separate workspace, with the publisher reviewing the delivery. This record is a fictional demo.",
         "source": {
           "repository": "https://github.com/example-org/agent-relay-demo",
           "base_commit": "0000000000000000000000000000000000000003",
@@ -189,13 +189,13 @@
             "verification.json",
             "summary.md"
           ],
-          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+          "review_notes": "Check that all changes stay within the allowed paths and that the delivery describes verification results and unresolved items. This demo record does not represent a real execution."
         },
         "category": "research",
         "size": "M",
         "priority": "normal"
       },
-      "digest": "0000000000000000000000000000000000000000000000000000000000000027",
+      "digest": "bd6a292b296bd833f3bd20f94319da83480080117e0bf2253a5883f5cb00de6c",
       "status": "open",
       "attempt_count": 0,
       "attempt": null,
@@ -212,9 +212,9 @@
         "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000004",
         "revision": 1,
         "mode": "subtask",
-        "title": "优化文件索引的增量扫描逻辑",
-        "prompt": "【虚构演示任务】\n分析重复扫描的来源，在既定目录内实现增量更新，并附上修改前后的基准记录。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 src/indexer/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
-        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "title": "Improve incremental file indexing",
+        "prompt": "[FICTIONAL DEMO TASK]\nFind the cause of repeated scans, implement incremental updates within the allowed directory, and include before-and-after benchmarks.\n\nStart by reading resources/task-context.md and checking the existing implementation and conventions. Only modify files under src/indexer/. Preserve existing public behavior. Record any out-of-scope issues in the unresolved items.\n\nWhen finished, run the verification commands and submit changes.patch, verification.json, and summary.md. This task is for interface demonstration only. Do not run it.",
+        "delegation_reason": "The inputs and change scope are clear. The task can be completed in a separate workspace, with the publisher reviewing the delivery. This record is a fictional demo.",
         "source": {
           "repository": "https://github.com/example-org/agent-relay-demo",
           "base_commit": "0000000000000000000000000000000000000004",
@@ -256,13 +256,13 @@
             "verification.json",
             "summary.md"
           ],
-          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+          "review_notes": "Check that all changes stay within the allowed paths and that the delivery describes verification results and unresolved items. This demo record does not represent a real execution."
         },
         "category": "code",
         "size": "M",
         "priority": "normal"
       },
-      "digest": "0000000000000000000000000000000000000000000000000000000000000028",
+      "digest": "ad2f38254f538aff23659a8ca4b872b51b4c6842c05d96c9eeada3b83ecb0b86",
       "status": "running",
       "attempt_count": 1,
       "attempt": {
@@ -283,9 +283,9 @@
         "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000005",
         "revision": 1,
         "mode": "subtask",
-        "title": "为搜索接口补充契约测试",
-        "prompt": "【虚构演示任务】\n补充分页、空结果和非法参数的接口契约测试，确认返回结构与文档保持一致。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 tests/search/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
-        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "title": "Add contract tests for the search API",
+        "prompt": "[FICTIONAL DEMO TASK]\nAdd contract tests for pagination, empty results, and invalid arguments. Verify that response structures match the documentation.\n\nStart by reading resources/task-context.md and checking the existing implementation and conventions. Only modify files under tests/search/. Preserve existing public behavior. Record any out-of-scope issues in the unresolved items.\n\nWhen finished, run the verification commands and submit changes.patch, verification.json, and summary.md. This task is for interface demonstration only. Do not run it.",
+        "delegation_reason": "The inputs and change scope are clear. The task can be completed in a separate workspace, with the publisher reviewing the delivery. This record is a fictional demo.",
         "source": {
           "repository": "https://github.com/example-org/agent-relay-demo",
           "base_commit": "0000000000000000000000000000000000000005",
@@ -328,13 +328,13 @@
             "verification.json",
             "summary.md"
           ],
-          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+          "review_notes": "Check that all changes stay within the allowed paths and that the delivery describes verification results and unresolved items. This demo record does not represent a real execution."
         },
         "category": "code",
         "size": "M",
         "priority": "normal"
       },
-      "digest": "0000000000000000000000000000000000000000000000000000000000000029",
+      "digest": "2f8e62c50899aca6a78ad9f34a8f099486621eac8ec76fdaf6284a4fd5a72963",
       "status": "submitted",
       "attempt_count": 1,
       "attempt": {
@@ -348,10 +348,10 @@
           "schema_version": 1,
           "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000005",
           "revision": 1,
-          "task_digest": "0000000000000000000000000000000000000000000000000000000000000029",
+          "task_digest": "2f8e62c50899aca6a78ad9f34a8f099486621eac8ec76fdaf6284a4fd5a72963",
           "attempt_id": "139ac250-b2cf-4b7d-9622-000000000005",
           "base_commit": "0000000000000000000000000000000000000005",
-          "summary": "演示交付：已完成任务范围内的修改，整理了验证过程与结果。此摘要是虚构数据，不代表真实执行。",
+          "summary": "Demo delivery: changes within the task scope are complete, with verification steps and results documented. This summary is fictional and does not represent a real execution.",
           "artifacts": [
             {
               "name": "changes.patch",
@@ -380,11 +380,11 @@
                 "tests"
               ],
               "exit_code": 0,
-              "evidence": "演示记录：验收命令返回 0。此结果未真实执行。"
+              "evidence": "https://github.com/example-org/agent-relay-demo/releases/download/demo/verification.json"
             }
           ],
           "assumptions": [
-            "以指定 commit 的内容与约定为准。"
+            "Use the contents and conventions at the pinned commit."
           ],
           "unresolved": [],
           "usage": null
@@ -402,9 +402,9 @@
         "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000006",
         "revision": 1,
         "mode": "subtask",
-        "title": "把部署流程整理成操作手册",
-        "prompt": "【虚构演示任务】\n将已有部署脚本的准备、发布和回滚步骤整理为可逐项核对的操作手册。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 docs/runbooks/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
-        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "title": "Turn the deployment workflow into a runbook",
+        "prompt": "[FICTIONAL DEMO TASK]\nDocument preparation, release, and rollback steps from the existing deployment scripts as a step-by-step checklist.\n\nStart by reading resources/task-context.md and checking the existing implementation and conventions. Only modify files under docs/runbooks/. Preserve existing public behavior. Record any out-of-scope issues in the unresolved items.\n\nWhen finished, run the verification commands and submit changes.patch, verification.json, and summary.md. This task is for interface demonstration only. Do not run it.",
+        "delegation_reason": "The inputs and change scope are clear. The task can be completed in a separate workspace, with the publisher reviewing the delivery. This record is a fictional demo.",
         "source": {
           "repository": "https://github.com/example-org/agent-relay-demo",
           "base_commit": "0000000000000000000000000000000000000006",
@@ -443,13 +443,13 @@
             "verification.json",
             "summary.md"
           ],
-          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+          "review_notes": "Check that all changes stay within the allowed paths and that the delivery describes verification results and unresolved items. This demo record does not represent a real execution."
         },
         "category": "docs",
         "size": "S",
         "priority": "normal"
       },
-      "digest": "000000000000000000000000000000000000000000000000000000000000002a",
+      "digest": "50a5b8b7072070e13b0c17976b6603c217694c07c317865980fc1d433c3aa9a8",
       "status": "accepted",
       "attempt_count": 1,
       "attempt": {
@@ -463,10 +463,10 @@
           "schema_version": 1,
           "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000006",
           "revision": 1,
-          "task_digest": "000000000000000000000000000000000000000000000000000000000000002a",
+          "task_digest": "50a5b8b7072070e13b0c17976b6603c217694c07c317865980fc1d433c3aa9a8",
           "attempt_id": "139ac250-b2cf-4b7d-9622-000000000006",
           "base_commit": "0000000000000000000000000000000000000006",
-          "summary": "演示交付：已完成任务范围内的修改，整理了验证过程与结果。此摘要是虚构数据，不代表真实执行。",
+          "summary": "Demo delivery: changes within the task scope are complete, with verification steps and results documented. This summary is fictional and does not represent a real execution.",
           "artifacts": [
             {
               "name": "changes.patch",
@@ -492,11 +492,11 @@
                 "--check"
               ],
               "exit_code": 0,
-              "evidence": "演示记录：验收命令返回 0。此结果未真实执行。"
+              "evidence": "https://github.com/example-org/agent-relay-demo/releases/download/demo/verification.json"
             }
           ],
           "assumptions": [
-            "以指定 commit 的内容与约定为准。"
+            "Use the contents and conventions at the pinned commit."
           ],
           "unresolved": [],
           "usage": null
