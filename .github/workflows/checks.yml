@@ -1,0 +1,22 @@
+name: Check task board
+on:
+  push:
+    branches-ignore: [gh-pages, taskboard-state]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ${{ vars.TASKBOARD_RUNNER || (github.server_url == 'https://github.com' && 'ubuntu-latest' || 'self-hosted') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Python behavior and syntax
+        run: |
+          python3 -m unittest discover -s tests -v
+          python3 -m compileall -q taskboard scripts
+      - name: Frontend behavior
+        run: node --test tests/test_site.mjs
+      - name: Whitespace
+        run: git diff --check

@@ -9,17 +9,17 @@
   "artifacts": [
     {
       "name": "changes.patch",
-      "uri": "artifact:sha256/4568817ab1585012a45433a9a2d803e69d12edc8e43d34d6a6455c10bcf2e952",
+      "uri": "https://github.com/example-org/agent-task-board/releases/download/taskboard-demo/changes.patch",
       "sha256": "4568817ab1585012a45433a9a2d803e69d12edc8e43d34d6a6455c10bcf2e952"
     },
     {
       "name": "verification.json",
-      "uri": "artifact:sha256/2dc093a3f702bce13a6c4e29dcd105d3e2c5c3a8f11699e5baf360de948b2edf",
+      "uri": "https://github.com/example-org/agent-task-board/releases/download/taskboard-demo/verification.json",
       "sha256": "2dc093a3f702bce13a6c4e29dcd105d3e2c5c3a8f11699e5baf360de948b2edf"
     },
     {
       "name": "summary.md",
-      "uri": "artifact:sha256/dd3c602c8d3459e71afb2c10e2baf0f8ab7a6cd6a90292b1dfdb78022c385e10",
+      "uri": "https://github.com/example-org/agent-task-board/releases/download/taskboard-demo/summary.md",
       "sha256": "dd3c602c8d3459e71afb2c10e2baf0f8ab7a6cd6a90292b1dfdb78022c385e10"
     }
   ],
@@ -34,7 +34,7 @@
         "tests/discount"
       ],
       "exit_code": 0,
-      "evidence": "artifact:sha256/2dc093a3f702bce13a6c4e29dcd105d3e2c5c3a8f11699e5baf360de948b2edf"
+      "evidence": "https://github.com/example-org/agent-task-board/releases/download/taskboard-demo/verification.json"
     }
   ],
   "assumptions": [

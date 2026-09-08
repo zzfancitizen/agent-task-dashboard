@@ -1,0 +1,508 @@
+{
+  "schema_version": 1,
+  "repository": "example-org/agent-relay-demo",
+  "hostname": "github.com",
+  "generated_at": "2026-09-08T06:00:00Z",
+  "demo": true,
+  "tasks": [
+    {
+      "number": 106,
+      "url": "https://github.com/example-org/agent-relay-demo/issues/106",
+      "author": "river-dev",
+      "created_at": "2026-09-08T05:00:00Z",
+      "spec": {
+        "schema_version": 1,
+        "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000001",
+        "revision": 1,
+        "mode": "subtask",
+        "title": "为日期格式化工具补齐边界测试",
+        "prompt": "【虚构演示任务】\n覆盖跨时区、闰年和空值等边界，补齐可复现的测试用例，并验证现有行为。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 tests/date/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
+        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "source": {
+          "repository": "https://github.com/example-org/agent-relay-demo",
+          "base_commit": "0000000000000000000000000000000000000001",
+          "workspace_patch": null,
+          "write_paths": [
+            "tests/date/"
+          ]
+        },
+        "resources": [
+          {
+            "type": "git_file",
+            "repository": "https://github.com/example-org/agent-relay-demo",
+            "commit": "0000000000000000000000000000000000000001",
+            "path": "docs/task-context.md",
+            "destination": "resources/task-context.md",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000011"
+          }
+        ],
+        "execution": {
+          "compatible_agents": [
+            "codex",
+            "claude"
+          ],
+          "timeout_seconds": 1800,
+          "max_attempts": 2
+        },
+        "acceptance": {
+          "commands": [
+            [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests"
+            ]
+          ],
+          "required_outputs": [
+            "changes.patch",
+            "verification.json",
+            "summary.md"
+          ],
+          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+        },
+        "category": "code",
+        "size": "S",
+        "priority": "high"
+      },
+      "digest": "0000000000000000000000000000000000000000000000000000000000000025",
+      "status": "open",
+      "attempt_count": 0,
+      "attempt": null,
+      "result": null,
+      "updated_at": 1788843600
+    },
+    {
+      "number": 105,
+      "url": "https://github.com/example-org/agent-relay-demo/issues/105",
+      "author": "mika-design",
+      "created_at": "2026-09-08T02:00:00Z",
+      "spec": {
+        "schema_version": 1,
+        "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000002",
+        "revision": 1,
+        "mode": "subtask",
+        "title": "整理组件库的快速上手文档",
+        "prompt": "【虚构演示任务】\n把安装、主题配置和常见用法整理为一份清晰的上手指南，检查所有示例命令。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 docs/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
+        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "source": {
+          "repository": "https://github.com/example-org/agent-relay-demo",
+          "base_commit": "0000000000000000000000000000000000000002",
+          "workspace_patch": null,
+          "write_paths": [
+            "docs/"
+          ]
+        },
+        "resources": [
+          {
+            "type": "git_file",
+            "repository": "https://github.com/example-org/agent-relay-demo",
+            "commit": "0000000000000000000000000000000000000002",
+            "path": "docs/task-context.md",
+            "destination": "resources/task-context.md",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000012"
+          }
+        ],
+        "execution": {
+          "compatible_agents": [
+            "claude",
+            "codex"
+          ],
+          "timeout_seconds": 2700,
+          "max_attempts": 2
+        },
+        "acceptance": {
+          "commands": [
+            [
+              "git",
+              "diff",
+              "--check"
+            ]
+          ],
+          "required_outputs": [
+            "changes.patch",
+            "verification.json",
+            "summary.md"
+          ],
+          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+        },
+        "category": "docs",
+        "size": "S",
+        "priority": "normal"
+      },
+      "digest": "0000000000000000000000000000000000000000000000000000000000000026",
+      "status": "open",
+      "attempt_count": 0,
+      "attempt": null,
+      "result": null,
+      "updated_at": 1788832800
+    },
+    {
+      "number": 104,
+      "url": "https://github.com/example-org/agent-relay-demo/issues/104",
+      "author": "chen-platform",
+      "created_at": "2026-09-07T23:00:00Z",
+      "spec": {
+        "schema_version": 1,
+        "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000003",
+        "revision": 1,
+        "mode": "subtask",
+        "title": "对比任务队列的重试与恢复机制",
+        "prompt": "【虚构演示任务】\n阅读指定版本的设计文档，比较三种队列方案的重试、幂等与恢复机制，输出对照报告。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 research/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
+        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "source": {
+          "repository": "https://github.com/example-org/agent-relay-demo",
+          "base_commit": "0000000000000000000000000000000000000003",
+          "workspace_patch": null,
+          "write_paths": [
+            "research/"
+          ]
+        },
+        "resources": [
+          {
+            "type": "git_file",
+            "repository": "https://github.com/example-org/agent-relay-demo",
+            "commit": "0000000000000000000000000000000000000003",
+            "path": "docs/task-context.md",
+            "destination": "resources/task-context.md",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000013"
+          }
+        ],
+        "execution": {
+          "compatible_agents": [
+            "claude"
+          ],
+          "timeout_seconds": 3600,
+          "max_attempts": 2
+        },
+        "acceptance": {
+          "commands": [
+            [
+              "git",
+              "diff",
+              "--check"
+            ]
+          ],
+          "required_outputs": [
+            "changes.patch",
+            "verification.json",
+            "summary.md"
+          ],
+          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+        },
+        "category": "research",
+        "size": "M",
+        "priority": "normal"
+      },
+      "digest": "0000000000000000000000000000000000000000000000000000000000000027",
+      "status": "open",
+      "attempt_count": 0,
+      "attempt": null,
+      "result": null,
+      "updated_at": 1788822000
+    },
+    {
+      "number": 103,
+      "url": "https://github.com/example-org/agent-relay-demo/issues/103",
+      "author": "nora-dev",
+      "created_at": "2026-09-07T20:00:00Z",
+      "spec": {
+        "schema_version": 1,
+        "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000004",
+        "revision": 1,
+        "mode": "subtask",
+        "title": "优化文件索引的增量扫描逻辑",
+        "prompt": "【虚构演示任务】\n分析重复扫描的来源，在既定目录内实现增量更新，并附上修改前后的基准记录。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 src/indexer/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
+        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "source": {
+          "repository": "https://github.com/example-org/agent-relay-demo",
+          "base_commit": "0000000000000000000000000000000000000004",
+          "workspace_patch": null,
+          "write_paths": [
+            "src/indexer/"
+          ]
+        },
+        "resources": [
+          {
+            "type": "git_file",
+            "repository": "https://github.com/example-org/agent-relay-demo",
+            "commit": "0000000000000000000000000000000000000004",
+            "path": "docs/task-context.md",
+            "destination": "resources/task-context.md",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000014"
+          }
+        ],
+        "execution": {
+          "compatible_agents": [
+            "codex"
+          ],
+          "timeout_seconds": 3600,
+          "max_attempts": 2
+        },
+        "acceptance": {
+          "commands": [
+            [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests"
+            ]
+          ],
+          "required_outputs": [
+            "changes.patch",
+            "verification.json",
+            "summary.md"
+          ],
+          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+        },
+        "category": "code",
+        "size": "M",
+        "priority": "normal"
+      },
+      "digest": "0000000000000000000000000000000000000000000000000000000000000028",
+      "status": "running",
+      "attempt_count": 1,
+      "attempt": {
+        "id": "139ac250-b2cf-4b7d-9622-000000000004",
+        "actor": "demo-agent-3",
+        "expires_at": 1788849000
+      },
+      "result": null,
+      "updated_at": 1788811200
+    },
+    {
+      "number": 102,
+      "url": "https://github.com/example-org/agent-relay-demo/issues/102",
+      "author": "kai-eng",
+      "created_at": "2026-09-07T17:00:00Z",
+      "spec": {
+        "schema_version": 1,
+        "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000005",
+        "revision": 1,
+        "mode": "subtask",
+        "title": "为搜索接口补充契约测试",
+        "prompt": "【虚构演示任务】\n补充分页、空结果和非法参数的接口契约测试，确认返回结构与文档保持一致。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 tests/search/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
+        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "source": {
+          "repository": "https://github.com/example-org/agent-relay-demo",
+          "base_commit": "0000000000000000000000000000000000000005",
+          "workspace_patch": null,
+          "write_paths": [
+            "tests/search/"
+          ]
+        },
+        "resources": [
+          {
+            "type": "git_file",
+            "repository": "https://github.com/example-org/agent-relay-demo",
+            "commit": "0000000000000000000000000000000000000005",
+            "path": "docs/task-context.md",
+            "destination": "resources/task-context.md",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000015"
+          }
+        ],
+        "execution": {
+          "compatible_agents": [
+            "codex",
+            "claude"
+          ],
+          "timeout_seconds": 2700,
+          "max_attempts": 2
+        },
+        "acceptance": {
+          "commands": [
+            [
+              "python3",
+              "-m",
+              "unittest",
+              "discover",
+              "-s",
+              "tests"
+            ]
+          ],
+          "required_outputs": [
+            "changes.patch",
+            "verification.json",
+            "summary.md"
+          ],
+          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+        },
+        "category": "code",
+        "size": "M",
+        "priority": "normal"
+      },
+      "digest": "0000000000000000000000000000000000000000000000000000000000000029",
+      "status": "submitted",
+      "attempt_count": 1,
+      "attempt": {
+        "id": "139ac250-b2cf-4b7d-9622-000000000005",
+        "actor": "demo-agent-4",
+        "expires_at": 1788849000
+      },
+      "result": {
+        "id": "be98e53a-9641-447b-9260-000000000005",
+        "manifest": {
+          "schema_version": 1,
+          "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000005",
+          "revision": 1,
+          "task_digest": "0000000000000000000000000000000000000000000000000000000000000029",
+          "attempt_id": "139ac250-b2cf-4b7d-9622-000000000005",
+          "base_commit": "0000000000000000000000000000000000000005",
+          "summary": "演示交付：已完成任务范围内的修改，整理了验证过程与结果。此摘要是虚构数据，不代表真实执行。",
+          "artifacts": [
+            {
+              "name": "changes.patch",
+              "uri": "https://github.com/example-org/agent-relay-demo/releases/download/demo/changes.patch",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000033"
+            },
+            {
+              "name": "verification.json",
+              "uri": "https://github.com/example-org/agent-relay-demo/releases/download/demo/verification.json",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000034"
+            },
+            {
+              "name": "summary.md",
+              "uri": "https://github.com/example-org/agent-relay-demo/releases/download/demo/summary.md",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000035"
+            }
+          ],
+          "verification": [
+            {
+              "argv": [
+                "python3",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests"
+              ],
+              "exit_code": 0,
+              "evidence": "演示记录：验收命令返回 0。此结果未真实执行。"
+            }
+          ],
+          "assumptions": [
+            "以指定 commit 的内容与约定为准。"
+          ],
+          "unresolved": [],
+          "usage": null
+        }
+      },
+      "updated_at": 1788800400
+    },
+    {
+      "number": 101,
+      "url": "https://github.com/example-org/agent-relay-demo/issues/101",
+      "author": "lee-ops",
+      "created_at": "2026-09-07T14:00:00Z",
+      "spec": {
+        "schema_version": 1,
+        "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000006",
+        "revision": 1,
+        "mode": "subtask",
+        "title": "把部署流程整理成操作手册",
+        "prompt": "【虚构演示任务】\n将已有部署脚本的准备、发布和回滚步骤整理为可逐项核对的操作手册。\n\n先阅读 resources/task-context.md，检查现有实现和约定。只修改 docs/runbooks/ 范围内的文件。保留既有公开行为；发现范围外的问题时，记录在未解决事项中。\n\n完成后运行验收命令，提交 changes.patch、verification.json 和 summary.md。此任务仅用于界面演示，请勿实际运行。",
+        "delegation_reason": "输入与修改范围清晰，可在独立工作目录中完成，并由发布者统一检查交付。此条记录为虚构演示。",
+        "source": {
+          "repository": "https://github.com/example-org/agent-relay-demo",
+          "base_commit": "0000000000000000000000000000000000000006",
+          "workspace_patch": null,
+          "write_paths": [
+            "docs/runbooks/"
+          ]
+        },
+        "resources": [
+          {
+            "type": "git_file",
+            "repository": "https://github.com/example-org/agent-relay-demo",
+            "commit": "0000000000000000000000000000000000000006",
+            "path": "docs/task-context.md",
+            "destination": "resources/task-context.md",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000016"
+          }
+        ],
+        "execution": {
+          "compatible_agents": [
+            "claude"
+          ],
+          "timeout_seconds": 1800,
+          "max_attempts": 2
+        },
+        "acceptance": {
+          "commands": [
+            [
+              "git",
+              "diff",
+              "--check"
+            ]
+          ],
+          "required_outputs": [
+            "changes.patch",
+            "verification.json",
+            "summary.md"
+          ],
+          "review_notes": "检查所有变更是否位于允许的路径内，交付是否说明验证结果及尚未解决的事项。演示记录不代表任何真实执行。"
+        },
+        "category": "docs",
+        "size": "S",
+        "priority": "normal"
+      },
+      "digest": "000000000000000000000000000000000000000000000000000000000000002a",
+      "status": "accepted",
+      "attempt_count": 1,
+      "attempt": {
+        "id": "139ac250-b2cf-4b7d-9622-000000000006",
+        "actor": "demo-agent-5",
+        "expires_at": 1788849000
+      },
+      "result": {
+        "id": "be98e53a-9641-447b-9260-000000000006",
+        "manifest": {
+          "schema_version": 1,
+          "task_id": "27a7b4e5-96aa-4d80-9e5e-000000000006",
+          "revision": 1,
+          "task_digest": "000000000000000000000000000000000000000000000000000000000000002a",
+          "attempt_id": "139ac250-b2cf-4b7d-9622-000000000006",
+          "base_commit": "0000000000000000000000000000000000000006",
+          "summary": "演示交付：已完成任务范围内的修改，整理了验证过程与结果。此摘要是虚构数据，不代表真实执行。",
+          "artifacts": [
+            {
+              "name": "changes.patch",
+              "uri": "https://github.com/example-org/agent-relay-demo/releases/download/demo/changes.patch",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000034"
+            },
+            {
+              "name": "verification.json",
+              "uri": "https://github.com/example-org/agent-relay-demo/releases/download/demo/verification.json",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000035"
+            },
+            {
+              "name": "summary.md",
+              "uri": "https://github.com/example-org/agent-relay-demo/releases/download/demo/summary.md",
+              "sha256": "0000000000000000000000000000000000000000000000000000000000000036"
+            }
+          ],
+          "verification": [
+            {
+              "argv": [
+                "git",
+                "diff",
+                "--check"
+              ],
+              "exit_code": 0,
+              "evidence": "演示记录：验收命令返回 0。此结果未真实执行。"
+            }
+          ],
+          "assumptions": [
+            "以指定 commit 的内容与约定为准。"
+          ],
+          "unresolved": [],
+          "usage": null
+        }
+      },
+      "updated_at": 1788789600
+    }
+  ]
+}

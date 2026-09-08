@@ -1,5 +1,7 @@
 # Agent Task Board Core Implementation Plan
 
+> 历史方案：已被 GitHub-only 实现替代。以仓库 `docs/github-only.md` 和当前代码为准；不再部署独立协调服务或 SQLite 后台。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 实现从发布可执行子任务，到唯一有效认领、CLI 执行、结果投递和原会话验收的可恢复核心闭环。

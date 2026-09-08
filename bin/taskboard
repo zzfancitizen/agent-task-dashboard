@@ -1,0 +1,12 @@
+#!/usr/bin/env python3
+"""Run the checked-out Taskboard package without installation."""
+from pathlib import Path
+import sys
+
+if sys.version_info < (3, 11):
+    raise SystemExit('Taskboard requires Python 3.11 or newer. Run it with a current python3 interpreter.')
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from taskboard.cli import main
+
+raise SystemExit(main())
