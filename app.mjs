@@ -1,4 +1,4 @@
-import { STATUS, CATEGORIES, normalizeSnapshot, filterTasks, taskCounts, taskLeaderboards, executionDuration, githubURL, taskCommand, safeHTTPS, resourceURL, buildTaskExport, relativeTime } from './model.mjs';
+import { STATUS, CATEGORIES, normalizeSnapshot, filterTasks, taskCounts, taskLeaderboards, executionDuration, githubURL, taskCommand, safeHTTPS, resourceURL, buildTaskExport, taskExecutionPrompt, relativeTime } from './model.mjs';
 import { DOWNLOAD_PLATFORMS, createDownloadPackage, publisherInstructions } from './downloads.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -354,6 +354,30 @@ function renderResources(resources) {
   }
   return list;
 }
+function renderHandoff(handoff) {
+  const content = element('div', 'handoff-notes');
+  function notes(label, values, empty = 'None declared.') {
+    content.append(paragraph(label, 'small-label'));
+    if (!Array.isArray(values) || !values.length) {
+      content.append(paragraph(empty, 'detail-empty'));
+      return;
+    }
+    const list = element('ul', 'detail-description');
+    for (const value of values) list.append(element('li', '', value));
+    content.append(list);
+  }
+  notes('Out of scope', handoff.non_goals);
+  notes('Constraints and established decisions', handoff.constraints);
+  notes('Assumptions', handoff.assumptions);
+  content.append(paragraph('Environment and access', 'small-label'), paragraph(handoff.environment || 'Not specified'));
+  notes('When to stop', handoff.stop_conditions);
+  content.append(paragraph('Author’s closure review', 'small-label'), paragraph('The author’s declared starting point, inputs, and completion plan.'));
+  for (const [key, label] of [['first_step', 'First action'], ['inputs', 'Required inputs and their purpose'], ['completion', 'Completion and delivery']]) {
+    content.append(paragraph(label, 'small-label'), paragraph(handoff.review?.[key] || 'Not specified'));
+  }
+  notes('Blocking questions', handoff.review?.blocking_questions, 'No blocking questions declared.');
+  return content;
+}
 function renderResult(result) {
   if (!result?.manifest) return paragraph('No result has been submitted yet. The summary, verification records, and files will appear here after execution.', 'detail-empty');
   const manifest = result.manifest;
@@ -402,9 +426,10 @@ function showTask(task) {
   header.append(heading, close);
   const body = element('div', 'dialog-body detail-layout');
   const main = element('div');
-  main.append(section('Task prompt', paragraph(spec.prompt, 'prompt-text'), button('Copy prompt', 'text-button', () => copyText(spec.prompt, 'Prompt copied'), 'copy')));
+  main.append(section('Task prompt', paragraph(spec.prompt, 'prompt-text'), button('Copy prompt', 'text-button', () => copyText(taskExecutionPrompt(spec), 'Full prompt and task context copied'), 'copy')));
   if (spec.delegation_reason) main.append(section('Why delegate', paragraph(spec.delegation_reason)));
   main.append(section('Resources', renderResources(spec.resources)));
+  if (spec.handoff) main.append(section('Handoff notes', renderHandoff(spec.handoff)));
   const acceptance = element('div');
   acceptance.append(paragraph('Verification commands', 'small-label'));
   if (spec.acceptance?.commands?.length) {

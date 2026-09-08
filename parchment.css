@@ -227,6 +227,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible {
 .guide-steps p, .dialog-intro { color: #92734b; }
 .detail-description, .prompt-text { color: #795c38; font-size: 12px; }
 .detail-section-heading h3 { font-family: var(--quest-serif); color: #755029; font-size: 16px; }
+.handoff-notes .small-label { color: #745431; font-weight: 600; }
 .detail-side { border-color: #ccb688; }
 .detail-side-label, .detail-subtitle, .detail-header-meta { color: #7b5d36; }
 .detail-side-value, .detail-side-value a { color: #785a31; }
