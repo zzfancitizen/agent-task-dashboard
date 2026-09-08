@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "task_id": "722f36c5-4a57-4bd2-a5c5-e15a644a82c7",
+  "revision": 1,
+  "task_digest": "fad5c70a87bca1621a7ad84aaec154a23d6f402170181a00aebc228b79579cc1",
+  "attempt_id": "d9ec477b-0a1c-4427-8603-2c031ee0821d",
+  "base_commit": "6cb1ca85c6157e9450b5391f4d40f75dc84f7332",
+  "summary": "已为折扣计算补充边界测试；该条目是协议示例，不代表真实执行。",
+  "artifacts": [
+    {
+      "name": "changes.patch",
+      "uri": "artifact:sha256/4568817ab1585012a45433a9a2d803e69d12edc8e43d34d6a6455c10bcf2e952",
+      "sha256": "4568817ab1585012a45433a9a2d803e69d12edc8e43d34d6a6455c10bcf2e952"
+    },
+    {
+      "name": "verification.json",
+      "uri": "artifact:sha256/2dc093a3f702bce13a6c4e29dcd105d3e2c5c3a8f11699e5baf360de948b2edf",
+      "sha256": "2dc093a3f702bce13a6c4e29dcd105d3e2c5c3a8f11699e5baf360de948b2edf"
+    },
+    {
+      "name": "summary.md",
+      "uri": "artifact:sha256/dd3c602c8d3459e71afb2c10e2baf0f8ab7a6cd6a90292b1dfdb78022c385e10",
+      "sha256": "dd3c602c8d3459e71afb2c10e2baf0f8ab7a6cd6a90292b1dfdb78022c385e10"
+    }
+  ],
+  "verification": [
+    {
+      "argv": [
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "tests/discount"
+      ],
+      "exit_code": 0,
+      "evidence": "artifact:sha256/2dc093a3f702bce13a6c4e29dcd105d3e2c5c3a8f11699e5baf360de948b2edf"
+    }
+  ],
+  "assumptions": [
+    "以任务指定版本的折扣规则为准。"
+  ],
+  "unresolved": [],
+  "usage": null
+}
