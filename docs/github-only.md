@@ -1,5 +1,7 @@
 # GitHub-only 部署与运行
 
+[完整中文使用手册](../README.md) | [Complete English manual](../README.en.md)
+
 这份实现说明替代最初的独立后台设计。线上只有 GitHub：Issues 保存请求，Actions 顺序处理，`taskboard-state` 分支保存确认后的状态，`gh-pages` 分支保存公开看板。本机程序负责调用已有 CLI 和接收成果，无常驻线上服务或数据库。
 
 **日常查看全部通过 GitHub Pages 完成，不需要本地页面或 HTTP 服务。** 浏览器从同一 Pages 站点读取 `tasks.json`；运行按钮直接唤起本地 CLI，CLI 不依赖本地网站。
