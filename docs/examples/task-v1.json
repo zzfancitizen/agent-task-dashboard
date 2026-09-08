@@ -31,5 +31,21 @@
     "commands": [["python3", "-m", "unittest", "discover", "-s", "tests/discount"]],
     "required_outputs": ["changes.patch", "verification.json", "summary.md"],
     "review_notes": "确认新增测试符合资源中的规则，且没有修改生产实现。"
+  },
+  "handoff": {
+    "non_goals": ["不修复或重构生产实现，不扩展折扣规则。"],
+    "constraints": ["只修改 tests/discount/；以固定资源中的折扣规则决定期望结果，保留生产接口。"],
+    "assumptions": [],
+    "environment": "使用 Python 3 及标准库 unittest 运行本地测试；需要 Git 和声明仓库的读取权限。本任务不授权安装额外依赖或连接外部服务；如果固定源码的测试依赖这些条件，停止并报告所缺条件。",
+    "stop_conditions": [
+      "resources/discount-rules.md、src/discount.py 或已有 tests/discount/ 测试不可用时，停止并报告具体路径。",
+      "规则未定义必要的期望结果、测试需要未声明的依赖或外部服务，或必须修改生产实现才能完成时，停止并在 unresolved 中记录原因，不自行补造规则。"
+    ],
+    "review": {
+      "first_step": "先阅读 resources/discount-rules.md 中固定的折扣规则，再对照 src/discount.py 和 tests/discount/ 中已有测试，列出规则已经定义但尚未覆盖的边界。",
+      "inputs": "src/discount.py 是固定 source.base_commit 下的生产实现；tests/discount/ 提供同一提交下的测试模式。resources/discount-rules.md 是 resources 中固定并校验哈希的 docs/discount-rules.md 副本，决定合法输入和期望结果。执行不需要发布者的聊天记录。",
+      "completion": "新增规则明确要求的零金额、折扣边界和非法输入测试；运行 acceptance.commands，确认修改只在 tests/discount/。交回 acceptance.required_outputs，summary.md 说明新增覆盖、验证结果及 unresolved；不把实现与规则的冲突隐藏成通过。",
+      "blocking_questions": []
+    }
   }
 }

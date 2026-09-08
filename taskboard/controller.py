@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import logging
 import re
 import shutil
 import time
@@ -13,7 +14,7 @@ from pathlib import Path
 
 from .download_assets import build_download_assets
 from .github import GitHub
-from .protocol import ProtocolError, _integer, _require, _text, _validate_command, parse_command, parse_task_issue
+from .protocol import ProtocolError, _integer, _require, _text, _validate_command, parse_command, parse_task_issue, validate_publication
 from .state import apply_command, expire_task, new_task
 from .transfers import command_fingerprint, resolve_bundle
 
@@ -131,12 +132,13 @@ def reconcile(api, *, now=None, allowed_members=()):
             if issue.get("user", {}).get("type") != "User" or not author:
                 continue
             try:
-                spec = parse_task_issue(issue["body"])
+                spec = validate_publication(parse_task_issue(issue["body"]))
                 if spec["task_id"] in known_ids:
                     continue  # A duplicate publish never creates a second claimable task.
                 record = new_task(issue, spec, now)
                 known_ids[spec["task_id"]] = key
-            except ProtocolError:
+            except ProtocolError as error:
+                logging.getLogger(__name__).warning('Issue #%s was not admitted (%s): %s', issue['number'], error.code, error.message)
                 continue
         record = expire_task(record, now)
         comments = sorted(api.comments(issue["number"]), key=lambda item: item["id"])

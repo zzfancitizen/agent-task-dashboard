@@ -37,7 +37,26 @@ class PublishingTests(unittest.TestCase):
         self.store.initialize('company/tasks', 'git.corp.example', [])
         self.session = str(uuid.uuid4())
         self.goal = self.root / 'goal.json'
-        self.goal.write_text(json.dumps({'goal': 'Add a version endpoint', 'context': 'The source is a small Python service; return the existing version value.', 'acceptance': ['The endpoint returns the version without mutating state.'], 'delegation_reason': 'This endpoint is independent of the active UI work.'}))
+        self.goal_value = {
+            'goal': 'Add a version endpoint',
+            'context': 'The source is a small Python service; return the existing version value.',
+            'acceptance': ['The endpoint returns the version without mutating state.'],
+            'delegation_reason': 'This endpoint is independent of the active UI work.',
+            'handoff': {
+                'non_goals': ['Do not change the UI or deploy the service.'],
+                'constraints': ['Preserve the existing answer value.'],
+                'assumptions': [],
+                'environment': 'Use Python 3 and Git; this task needs no external service or credentials.',
+                'stop_conditions': ['Stop and report missing source inputs instead of guessing their contents.'],
+                'review': {
+                    'first_step': 'Read src/app.py to find the current answer value.',
+                    'inputs': 'Use src/app.py from the pinned source and taskboard-inputs/context.md for supporting context.',
+                    'completion': 'Run python -m unittest and return changes.patch, summary.md, and verification.json.',
+                    'blocking_questions': [],
+                },
+            },
+        }
+        self.goal.write_text(json.dumps(self.goal_value))
         real_git = publishing._git
         def git_edge(root, *argv, **kwargs):
             if argv[0] == 'ls-remote':
@@ -65,20 +84,78 @@ class PublishingTests(unittest.TestCase):
         self.assertEqual(task['resources'][0]['destination'], 'taskboard-inputs/context.md')
         self.assertIn('small Python service', task['prompt'])
         self.assertIn('without mutating state', task['acceptance']['review_notes'])
+        self.assertEqual(task['handoff'], self.goal_value['handoff'])
+        for value in (self.commit, 'taskboard-inputs/context.md', 'Preserve the existing answer value.', 'Stop and report missing source inputs', 'changes.patch'):
+            self.assertIn(value, proposal['execution_prompt'])
         self.assertEqual(proposal['digest'], task_digest(task))
-        self.assertEqual(self.prepare()['id'], proposal['id'])
+        repeated = self.prepare()
+        self.assertEqual(repeated['id'], proposal['id'])
+        self.assertEqual(repeated['execution_prompt'], proposal['execution_prompt'])
+        self.assertNotIn('execution_prompt', self.store.data()['proposals'][proposal['id']])
+        proposal['execution_prompt'] = 'caller-only preview change'
+        self.assertEqual(self.prepare()['execution_prompt'], repeated['execution_prompt'])
         public = json.dumps(task)
         self.assertNotIn(self.session, public)
         self.assertNotIn(str(self.workspace), public)
 
     def test_missing_acceptance_or_context_is_rejected(self):
         for field in ('acceptance', 'context', 'delegation_reason'):
-            value = json.loads(self.goal.read_text())
+            value = copy.deepcopy(self.goal_value)
             value.pop(field)
             self.goal.write_text(json.dumps(value))
             with self.subTest(field=field), self.assertRaises(ProtocolError) as caught:
                 self.prepare()
             self.assertEqual(caught.exception.code, 'GOAL_INCOMPLETE')
+
+    def test_missing_handoff_is_rejected_before_git_or_remote_work(self):
+        value = copy.deepcopy(self.goal_value)
+        value.pop('handoff')
+        self.goal.write_text(json.dumps(value))
+        with patch('taskboard.publishing._git', side_effect=AssertionError('Incomplete handoff reached Git')), self.assertRaises(ProtocolError) as caught:
+            self.prepare()
+        self.assertEqual(caught.exception.code, 'PROMPT_CLOSURE_REQUIRED')
+        self.assertNotIn('proposals', self.store.data())
+
+    def test_missing_or_empty_handoff_notes_and_review_are_rejected_before_git(self):
+        cases = []
+        for field in ('non_goals', 'constraints', 'assumptions', 'environment', 'stop_conditions', 'review'):
+            value = copy.deepcopy(self.goal_value)
+            value['handoff'].pop(field)
+            cases.append((f'missing {field}', value))
+        for field in ('first_step', 'inputs', 'completion', 'blocking_questions'):
+            value = copy.deepcopy(self.goal_value)
+            value['handoff']['review'].pop(field)
+            cases.append((f'missing review {field}', value))
+        for field in ('first_step', 'inputs', 'completion'):
+            value = copy.deepcopy(self.goal_value)
+            value['handoff']['review'][field] = ' '
+            cases.append((f'blank review {field}', value))
+        for field, empty in (('environment', ''), ('stop_conditions', []), ('constraints', [''])):
+            value = copy.deepcopy(self.goal_value)
+            value['handoff'][field] = empty
+            cases.append((f'empty {field}', value))
+        for label, value in cases:
+            with self.subTest(label=label):
+                self.goal.write_text(json.dumps(value))
+                with patch('taskboard.publishing._git', side_effect=AssertionError('Incomplete handoff reached Git')), self.assertRaises(ProtocolError) as caught:
+                    self.prepare()
+                self.assertEqual(caught.exception.code, 'INVALID_PAYLOAD')
+
+    def test_declared_blockers_are_rejected_before_git_or_remote_work(self):
+        value = copy.deepcopy(self.goal_value)
+        value['handoff']['review']['blocking_questions'] = ['Where is the version source of truth?']
+        self.goal.write_text(json.dumps(value))
+        with patch('taskboard.publishing._git', side_effect=AssertionError('Blocked handoff reached Git')), self.assertRaises(ProtocolError) as caught:
+            self.prepare()
+        self.assertEqual(caught.exception.code, 'PROMPT_CLOSURE_BLOCKED')
+        self.assertNotIn('proposals', self.store.data())
+
+    def test_explicitly_empty_optional_notes_do_not_invent_assumptions(self):
+        value = copy.deepcopy(self.goal_value)
+        for field in ('non_goals', 'constraints', 'assumptions'):
+            value['handoff'][field] = []
+        self.goal.write_text(json.dumps(value))
+        self.assertEqual(self.prepare()['task']['handoff'], value['handoff'])
 
     def test_dirty_tracked_staged_and_untracked_source_are_not_silently_dropped(self):
         for state in ('tracked', 'staged', 'untracked'):
@@ -95,7 +172,7 @@ class PublishingTests(unittest.TestCase):
 
     def test_goal_inside_source_requires_explicit_safe_helper_exclusion(self):
         self.goal = self.workspace / 'proposal-goal.json'
-        self.goal.write_text(json.dumps({'goal': 'Add endpoint', 'context': 'Independent endpoint.', 'acceptance': ['Returns a version.'], 'delegation_reason': 'Independent work.'}))
+        self.goal.write_text(json.dumps(self.goal_value))
         with self.assertRaises(ProtocolError):
             self.prepare()
         value = json.loads(self.goal.read_text())
@@ -161,6 +238,35 @@ class PublishingTests(unittest.TestCase):
         with self.assertRaises(ProtocolError) as caught:
             self.publisher.publish_proposal(self.store, FakeIssues(), proposal['id'], approved=True)
         self.assertEqual(caught.exception.code, 'PROPOSAL_CHANGED')
+
+    def test_mutated_reviewed_handoff_is_rejected_without_contacting_github(self):
+        proposal = self.prepare()
+        self.store.update(lambda data: data['proposals'][proposal['id']]['task']['handoff']['constraints'].append('An unreviewed new constraint.'))
+        client = FakeIssues()
+        with patch.object(client, 'user', side_effect=AssertionError('Changed proposal reached GitHub')), self.assertRaises(ProtocolError) as caught:
+            self.publisher.publish_proposal(self.store, client, proposal['id'], approved=True)
+        self.assertEqual(caught.exception.code, 'PROPOSAL_CHANGED')
+        self.assertFalse(self.store.data()['proposals'][proposal['id']]['approved'])
+
+    def test_old_or_blocked_local_proposal_cannot_publish_even_with_matching_digest(self):
+        for variant, code in (('legacy', 'PROMPT_CLOSURE_REQUIRED'), ('blocked', 'PROMPT_CLOSURE_BLOCKED')):
+            with self.subTest(variant=variant):
+                proposal = self.prepare()
+                def change(data):
+                    saved = data['proposals'][proposal['id']]
+                    if variant == 'legacy':
+                        saved['task'].pop('handoff')
+                    else:
+                        saved['task']['handoff']['review']['blocking_questions'] = ['Missing resource location.']
+                    saved['digest'] = task_digest(saved['task'])
+                    saved['fingerprint'] = self.publisher._fingerprint(saved['task'], saved['workspace'], saved['provider'], saved['session'], saved['board'])
+                self.store.update(change)
+                client = FakeIssues()
+                with patch.object(client, 'user', side_effect=AssertionError('Unready proposal reached GitHub')), self.assertRaises(ProtocolError) as caught:
+                    self.publisher.publish_proposal(self.store, client, proposal['id'], approved=True)
+                self.assertEqual(caught.exception.code, code)
+                self.assertFalse(self.store.data()['proposals'][proposal['id']]['approved'])
+                self.assertEqual(self.store.data()['publications'], {})
 
     def test_uncertain_creation_reconciles_without_creating_duplicate(self):
         proposal = self.prepare()

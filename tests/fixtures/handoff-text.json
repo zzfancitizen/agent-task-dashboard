@@ -1,0 +1,17 @@
+[
+  {"name": "lone_high_surrogate", "text": "\ud800", "valid": false},
+  {"name": "lone_low_surrogate", "text": "\udc00", "valid": false},
+  {"name": "embedded_lone_surrogate", "text": "Python \udfff setup", "valid": false},
+  {"name": "reversed_surrogates", "text": "\udc00\ud800", "valid": false},
+  {"name": "next_line_whitespace", "text": "\u0085", "valid": false},
+  {"name": "file_separator_whitespace", "text": "\u001c", "valid": false},
+  {"name": "group_separator_whitespace", "text": "\u001d", "valid": false},
+  {"name": "record_separator_whitespace", "text": "\u001e", "valid": false},
+  {"name": "unit_separator_whitespace", "text": "\u001f", "valid": false},
+  {"name": "mixed_unicode_whitespace", "text": "\t\u0085\u001c\u00a0\u2003\u3000\n", "valid": false},
+  {"name": "emoji", "text": "Run the tests \ud83e\uddea", "valid": true},
+  {"name": "astral_code_points", "text": "Read \ud800\udc00 and \udbff\udfff fixtures", "valid": true},
+  {"name": "multiline_unicode", "text": "Python 3.13\n\u6838\u9a8c caf\u00e9 fixtures.\n", "valid": true},
+  {"name": "surrounding_python_whitespace", "text": "\u0085Read the pinned source.\u001f", "valid": true},
+  {"name": "bom_is_not_python_whitespace", "text": "\ufeff", "valid": true}
+]

@@ -81,7 +81,8 @@ test('stored ZIP preserves CRC32, UTF-8, fixed dates and regular executable file
   assert.throws(() => storedZip([{ name: 'a.txt', data: '' }, { name: 'A.txt', data: '' }]), /duplicate/i);
 });
 
-test('download descriptor pins the confirmed issue revision and digest without executable task text', () => {
+test('legacy task downloads need no new handoff and pin the confirmed revision without executable task text', () => {
+  assert.equal(Object.hasOwn(task.spec, 'handoff'), false);
   assert.deepEqual(buildDownloadRequest(snapshot, { task }, runtimeHash), {
     schema_version: 1, hostname: 'github.acme.internal', repository: 'acme/task-board', issue: 42,
     revision: 7, task_digest: 'a'.repeat(64), runtime_sha256: runtimeHash, action: 'run',
@@ -144,5 +145,7 @@ test('copyable publisher instructions bind the real board and require affirmativ
   assert.equal(instruction.includes('https://pages.acme.internal/guild/board/downloads/'), true);
   assert.match(instruction, /explicit approval/);
   assert.match(instruction, /complete context/);
+  assert.match(instruction, /self-contained/);
+  for (const field of ['first_step', 'inputs', 'completion', 'blocking_questions', 'execution_prompt']) assert.ok(instruction.includes(field), `Missing author-review guidance: ${field}`);
   assert.throws(() => publisherInstructions({ ...snapshot, demo: true }, 'https://pages.acme.internal/guild/board/'));
 });

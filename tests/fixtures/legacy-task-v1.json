@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "task_id": "722f36c5-4a57-4bd2-a5c5-e15a644a82c7",
+  "revision": 1,
+  "mode": "subtask",
+  "title": "补全折扣计算模块的边界测试",
+  "prompt": "为 src/discount.py 补充边界测试。先阅读 resources/discount-rules.md，再检查已有实现与测试。覆盖零金额、折扣边界及文档明确规定的非法输入。只修改 tests/discount/ 内的文件，不改生产实现；如发现实现与规则冲突，记录在 unresolved 中。运行 acceptance.commands 中的命令。交付 changes.patch、verification.json 和 summary.md，说明新增覆盖及未解决事项。",
+  "delegation_reason": "输入和验收命令明确，测试可独立执行，发起者希望保留后续集成预算。",
+  "source": {
+    "repository": "https://github.com/example-org/demo-api",
+    "base_commit": "6cb1ca85c6157e9450b5391f4d40f75dc84f7332",
+    "workspace_patch": null,
+    "write_paths": ["tests/discount/"]
+  },
+  "resources": [
+    {
+      "type": "git_file",
+      "repository": "https://github.com/example-org/demo-api",
+      "commit": "6cb1ca85c6157e9450b5391f4d40f75dc84f7332",
+      "path": "docs/discount-rules.md",
+      "destination": "resources/discount-rules.md",
+      "sha256": "c1f2df3eb45264c15aeb4f3d988b4e35a10d242a78e4b575660722a12c313851"
+    }
+  ],
+  "execution": {
+    "compatible_agents": ["codex", "claude"],
+    "timeout_seconds": 1800,
+    "max_attempts": 2
+  },
+  "acceptance": {
+    "commands": [["python3", "-m", "unittest", "discover", "-s", "tests/discount"]],
+    "required_outputs": ["changes.patch", "verification.json", "summary.md"],
+    "review_notes": "确认新增测试符合资源中的规则，且没有修改生产实现。"
+  }
+}

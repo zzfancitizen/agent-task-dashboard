@@ -10,7 +10,7 @@ from unittest.mock import patch
 from pathlib import Path
 
 from taskboard.controller import build_site, reconcile, snapshot
-from taskboard.protocol import ProtocolError, format_task_issue, format_command
+from taskboard.protocol import ProtocolError, format_task_issue, format_command, task_digest
 
 
 class FakeGitHub:
@@ -81,6 +81,33 @@ class FakeGitHub:
 
 
 class ControllerTests(unittest.TestCase):
+    def test_new_issue_without_closed_handoff_is_not_admitted(self):
+        from tests.test_prompt_closure import handoff
+        for notes in (None, handoff()):
+            api = FakeGitHub()
+            spec = copy.deepcopy(api.task_spec)
+            spec.pop('handoff', None)
+            if notes is not None:
+                notes['review']['blocking_questions'] = ['Wait for a decision in another agent session.']
+                spec['handoff'] = notes
+            api.issue_data['body'] = format_task_issue(spec)
+            result = reconcile(api, now=100)
+            self.assertEqual(result['tasks'], {})
+            self.assertEqual(api.projected, [])
+
+    def test_existing_legacy_task_keeps_digest_and_can_still_be_claimed(self):
+        from taskboard.state import new_task
+        from tests.test_prompt_closure import LEGACY
+        api = FakeGitHub()
+        api.issue_data['body'] = format_task_issue(LEGACY)
+        api.state['tasks']['7'] = new_task(api.issue_data, LEGACY, 100)
+        digest = task_digest(LEGACY)
+        api.add('bob')
+        result = reconcile(api, now=101)
+        self.assertEqual(result['tasks']['7']['status'], 'claimed')
+        self.assertEqual(result['tasks']['7']['digest'], digest)
+        self.assertEqual(result['tasks']['7']['spec'], LEGACY)
+
     def test_native_comment_access_is_enough_even_with_legacy_roster(self):
         api = FakeGitHub()
         command = api.add("outsider")

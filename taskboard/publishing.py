@@ -10,7 +10,8 @@ from urllib.parse import urlsplit
 import uuid
 
 from .local import LocalStore, hostname_name, regular_path, repository_name, session_id
-from .protocol import ProtocolError, format_task_issue, parse_task_issue, task_digest, validate_task
+from .prompts import execution_prompt
+from .protocol import ProtocolError, format_task_issue, parse_task_issue, task_digest, validate_handoff, validate_publication
 from .workspace import _git, checked_path
 
 
@@ -30,10 +31,10 @@ def _goal(path: Path) -> dict:
             raise ProtocolError('GOAL_INCOMPLETE', 'The local goal JSON must be at most 32 KiB.')
         value = json.loads(path.read_text(encoding='utf-8'))
     except (OSError, ValueError, UnicodeError) as exc:
-        raise ProtocolError('GOAL_INCOMPLETE', 'Supply a UTF-8 goal JSON with goal, context, acceptance, and delegation_reason.') from exc
+        raise ProtocolError('GOAL_INCOMPLETE', 'Supply a UTF-8 goal JSON with goal, context, acceptance, delegation_reason, and handoff.') from exc
     required = {'goal', 'context', 'acceptance', 'delegation_reason'}
-    if not isinstance(value, dict) or not required <= value.keys() or not value.keys() <= required | {'required_outputs', 'excluded_paths'}:
-        raise ProtocolError('GOAL_INCOMPLETE', 'Goal JSON requires goal, context, acceptance, and delegation_reason; optional fields are required_outputs and excluded_paths.')
+    if not isinstance(value, dict) or not required <= value.keys() or not value.keys() <= required | {'required_outputs', 'excluded_paths', 'handoff'}:
+        raise ProtocolError('GOAL_INCOMPLETE', 'Goal JSON requires goal, context, acceptance, delegation_reason, and handoff; optional fields are required_outputs and excluded_paths.')
     for field in ('goal', 'context', 'delegation_reason'):
         if not isinstance(value[field], str) or not value[field].strip() or '\x00' in value[field]:
             raise ProtocolError('GOAL_INCOMPLETE', f'Supply nonempty {field} from the original conversation.')
@@ -41,6 +42,7 @@ def _goal(path: Path) -> dict:
         entries = value.get(field, [])
         if not isinstance(entries, list) or any(not isinstance(item, str) or not item.strip() for item in entries) or (field == 'acceptance' and not entries):
             raise ProtocolError('GOAL_INCOMPLETE', f'{field} must contain nonempty strings; acceptance requires at least one criterion.')
+    value['handoff'] = validate_handoff(value.get('handoff'), for_publication=True)
     return value
 
 
@@ -129,9 +131,9 @@ def prepare_proposal(store: LocalStore, *, workspace: Path, goal_file: Path, tit
     regular_path(workspace)
     if not workspace.is_dir():
         raise ProtocolError('INVALID_WORKSPACE', 'The original session workspace must exist.')
-    root = Path(_git(workspace, 'rev-parse', '--show-toplevel').stdout.decode().strip()).resolve()
     goal_path = Path(goal_file).expanduser().absolute()
     goal = _goal(goal_path)
+    root = Path(_git(workspace, 'rev-parse', '--show-toplevel').stdout.decode().strip()).resolve()
     config = store.config()
     repository, remote = _source(root, config['hostname'])
     commit = _git(root, 'rev-parse', '--verify', 'HEAD^{commit}').stdout.decode().strip()
@@ -159,7 +161,7 @@ def prepare_proposal(store: LocalStore, *, workspace: Path, goal_file: Path, tit
     prompt = 'Goal\n' + goal['goal'].strip() + '\n\nContext\n' + goal['context'].strip() + '\n\nAcceptance criteria\n' + '\n'.join('- ' + item.strip() for item in goal['acceptance'])
     if resource_specs:
         prompt += '\n\nPinned supporting inputs\n' + '\n'.join('- ' + item['destination'] for item in resource_specs)
-    task = validate_task({'schema_version': 1, 'task_id': str(uuid.uuid4()), 'revision': 1, 'mode': 'subtask', 'title': title, 'prompt': prompt, 'delegation_reason': goal['delegation_reason'], 'source': {'repository': repository, 'base_commit': commit, 'workspace_patch': None, 'write_paths': writes}, 'resources': resource_specs, 'execution': {'compatible_agents': ['codex', 'claude'], 'timeout_seconds': 3600, 'max_attempts': 3}, 'acceptance': {'commands': commands or [], 'required_outputs': goal.get('required_outputs', ['changes.patch', 'summary.md', 'verification.json']), 'review_notes': '\n'.join(goal['acceptance'])}, 'size': size, 'category': category})
+    task = validate_publication({'schema_version': 1, 'task_id': str(uuid.uuid4()), 'revision': 1, 'mode': 'subtask', 'title': title, 'prompt': prompt, 'delegation_reason': goal['delegation_reason'], 'handoff': goal['handoff'], 'source': {'repository': repository, 'base_commit': commit, 'workspace_patch': None, 'write_paths': writes}, 'resources': resource_specs, 'execution': {'compatible_agents': ['codex', 'claude'], 'timeout_seconds': 3600, 'max_attempts': 3}, 'acceptance': {'commands': commands or [], 'required_outputs': goal.get('required_outputs', ['changes.patch', 'summary.md', 'verification.json']), 'review_notes': '\n'.join(goal['acceptance'])}, 'size': size, 'category': category})
     board = {'repository': config['repo'], 'hostname': config['hostname']}
     fingerprint = _fingerprint(task, str(workspace), provider, session, board)
     def save(data):
@@ -170,7 +172,9 @@ def prepare_proposal(store: LocalStore, *, workspace: Path, goal_file: Path, tit
         proposal = {'id': str(uuid.uuid4()), 'task': task, 'digest': task_digest(task), 'workspace': str(workspace), 'provider': provider, 'session': session, 'board': board, 'fingerprint': fingerprint, 'excluded_paths': exclusions, 'approved': False}
         proposals[proposal['id']] = proposal
         return copy.deepcopy(proposal)
-    return store.update(save)
+    proposal = store.update(save)
+    proposal['execution_prompt'] = execution_prompt(proposal['task'])
+    return proposal
 
 
 def publish_proposal(store: LocalStore, client, proposal_id: str, *, approved: bool = False) -> dict:
@@ -182,7 +186,7 @@ def publish_proposal(store: LocalStore, client, proposal_id: str, *, approved: b
         proposal = store.data().get('proposals', {}).get(proposal_id)
         if proposal is None:
             raise ProtocolError('PROPOSAL_NOT_FOUND', 'Prepare this proposal locally before publishing.')
-        task = validate_task(proposal['task'])
+        task = validate_publication(proposal['task'])
         digest = task_digest(task)
         if digest != proposal['digest'] or _fingerprint(task, proposal['workspace'], proposal['provider'], proposal['session'], proposal['board']) != proposal['fingerprint']:
             raise ProtocolError('PROPOSAL_CHANGED', 'The reviewed proposal changed. Prepare and review a new proposal before publishing.')

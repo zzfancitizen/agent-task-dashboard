@@ -176,6 +176,38 @@ function boundedNumber(value, min, max, label) {
   return number;
 }
 
+export function validateHandoff(value) {
+  function fields(object, names, label) {
+    if (!object || typeof object !== 'object' || Array.isArray(object)
+      || Object.keys(object).length !== names.length || names.some(name => !Object.hasOwn(object, name))) {
+      throw new Error(`${label} must be a JSON object with exactly these fields: ${names.join(', ')}.`);
+    }
+  }
+  function text(value, label) {
+    // Python's str.strip whitespace differs from JavaScript's trim.
+    const whitespaceOnly = /^[\u0009-\u000d\u001c-\u0020\u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]*$/u;
+    // Unicode mode leaves valid astral pairs intact and matches only lone surrogates.
+    if (typeof value !== 'string' || whitespaceOnly.test(value) || /[\u0000\ud800-\udfff]/u.test(value)) throw new Error(`${label} must be a nonempty Unicode string without null characters or lone surrogates.`);
+  }
+  function strings(value, label) {
+    if (!Array.isArray(value)) throw new Error(`${label} must be a JSON array of nonempty strings.`);
+    value.forEach(item => text(item, `${label} item`));
+  }
+  fields(value, ['non_goals', 'constraints', 'assumptions', 'environment', 'stop_conditions', 'review'], 'Handoff');
+  for (const key of ['non_goals', 'constraints', 'assumptions', 'stop_conditions']) strings(value[key], `Handoff ${key}`);
+  text(value.environment, 'Handoff environment');
+  if (!value.stop_conditions.length) throw new Error('Handoff stop_conditions must contain at least one condition for stopping and reporting missing inputs.');
+  fields(value.review, ['first_step', 'inputs', 'completion', 'blocking_questions'], 'Handoff review');
+  for (const key of ['first_step', 'inputs', 'completion']) text(value.review[key], `Handoff review.${key}`);
+  strings(value.review.blocking_questions, 'Handoff review.blocking_questions');
+  return value;
+}
+
+export function taskExecutionPrompt(task) {
+  const { prompt, ...context } = task;
+  return `${prompt}\n\n## Declared task context\n\n\`\`\`json\n${JSON.stringify(context, null, 2)}\n\`\`\`\n\nUse the pinned source, resources, execution limits, and acceptance criteria above. Do not rely on the publisher's original conversation. If a required input, access, or prerequisite is missing, stop and report the exact gap instead of guessing.\n`;
+}
+
 export function buildTaskExport(values, { hostname = 'github.com', taskId } = {}) {
   if (!UUID.test(taskId)) throw new Error('Invalid task ID. Reopen the publishing form.');
   const title = required(values.title, 'Task title', 200);
@@ -223,12 +255,17 @@ export function buildTaskExport(values, { hostname = 'github.com', taskId } = {}
   if (!Object.hasOwn(CATEGORIES, category) || !['S', 'M', 'L'].includes(size) || !['normal', 'high'].includes(priority)) throw new Error('Invalid task category, size, or priority.');
   const reviewNotes = String(values.review_notes || '').trim();
   if (reviewNotes.includes('\0')) throw new Error('Review notes must not contain null characters.');
+  if (typeof values.handoff !== 'string' || !values.handoff.trim()) throw new Error('Enter handoff JSON prepared and reviewed for this task.');
+  let handoff;
+  try { handoff = JSON.parse(values.handoff); } catch { throw new Error('Handoff must be valid JSON prepared and reviewed for this task.'); }
+  validateHandoff(handoff);
+  if (handoff.review.blocking_questions.length) throw new Error('Resolve the handoff blocking questions before exporting. The receiving agent needs the missing inputs to work independently.');
   const task = {
     schema_version: 1, task_id: taskId, revision: 1, mode: 'subtask', title, prompt, delegation_reason: reason,
     source: { repository, base_commit: commit.toLowerCase(), workspace_patch: null, write_paths: [...new Set(writePaths)] },
     resources, execution: { compatible_agents: [...new Set(agents)], timeout_seconds: timeout * 60, max_attempts: attempts },
     acceptance: { commands, required_outputs: [...new Set(outputs)], review_notes: reviewNotes },
-    category, size, priority,
+    category, size, priority, handoff,
   };
   if (new TextEncoder().encode(JSON.stringify(task)).byteLength > 48 * 1024) throw new Error('Task file exceeds 48 KB. Shorten the instructions or reduce the resources.');
   return task;

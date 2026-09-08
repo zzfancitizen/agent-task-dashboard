@@ -9,13 +9,13 @@
 | 组件 | 职责 |
 | --- | --- |
 | GitHub Pages | 显示确认后的任务、交付和榜单，生成对应系统的下载 ZIP |
-| 项目 skill / rule / hook | 在现有发布者会话中整理提案、取得明确发布同意，并绑定准确原会话 |
+| 项目 skill / rule / hook | 在现有发布者会话中整理并复核完整交接提案、取得明确发布同意，并绑定准确原会话 |
 | 本地执行包 | 引导工具安装和登录，确认领取，在独立目录运行成员自己的 agent，收集成果 |
 | GitHub Issues / 评论 | 保存不可变任务内容、领取/验收请求和成果传输分片 |
 | Actions controller | 校验身份与任务状态，顺序处理请求，以工作流凭据保存成果，刷新状态和页面 |
 | GitHub Releases | 保存确认成果的下载附件 |
 
-发布者的 agent 先在本地整理目标、固定源码和资源、范围及验收条件。发布者明确同意提案后，工具创建 Issue。Actions 确认后，委托出现在 Pages。
+发布者的 agent 先在本地整理目标、固定源码和资源、范围、运行前提及验收条件，复核完整执行 prompt 能否支持独立工作。发布者明确同意提案后，工具创建 Issue。Actions 确认后，委托出现在 Pages。
 
 领取者在 Pages 选择操作系统，下载 ZIP，解压并打开启动文件。首次安装/登录引导完成后选择 Codex 或 Claude；本地程序重新读取任务，取得 Actions 确认的当前执行编号后才开始工作。执行结果通过评论交给 Actions，Actions 保存附件并发出结果通知。发布者在原会话中同步、检查和验收；已验收任务计入完成榜。
 
@@ -56,11 +56,37 @@ Runner 需要 Python 3.11+ 和 GitHub CLI。`Check task board` 还需要 Node.js
 
 示例值需要替换；使用 Claude 时将 provider 改为 `claude`。Codex 集成安装到 `.agents/skills/taskboard-publish/`，在 `AGENTS.md` 和 `.codex/hooks.json` 添加受标记管理的规则与 hook；Claude 使用 `.claude/skills/taskboard-publish/`、`CLAUDE.md` 和 `.claude/settings.json`。已有无关配置保留。按 provider 的 hook 信任与加载要求使其生效。
 
+升级已安装的集成时，从当前 Pages 重新下载发布配置包，在同一项目、provider 上重跑安装；源码用户从更新后的代码重跑 `install-integration`。然后重载 hook 并恢复原会话。网页更新不会自动替换项目中已经安装的 skill 和 runtime。
+
 `SessionStart` / `UserPromptSubmit` hook 从真实事件获得 session ID 与 cwd，在本地保存 callback，供 agent 的提案辅助脚本读取。Hook 不查找“最新会话”，不读取 transcript，不做网络轮询，也不调用模型。
 
-Agent 写出目标 JSON 并调用 `prepare`，得到包含固定 commit、资源内容哈希、prompt 和验收的具体本地提案。它先向用户展示提案，明确询问是否发布；用户同意后调用 `publish ... --approved`。没有同意标记不能通过提案发布接口；安装 skill 或复杂度判断都不是发布授权。已有 `publish FILE` 为显式高级操作保留。
+Agent 写出目标 JSON 并调用 `prepare`，得到包含固定 commit、资源内容哈希、prompt、`handoff` 和验收的具体本地提案，以及由任务派生的 `execution_prompt`。Agent 先通读这份完整执行输入，修正隐藏依赖并重新准备，再向用户展示提案、询问是否发布；用户同意后调用 `publish ... --approved`。没有同意标记不能通过提案发布接口；安装 skill 或复杂度判断都不是发布授权。已有 `publish FILE` 为显式高级操作保留。
 
 源输入需要已提交且能从远端获取。涉及任务的脏工作区不能静默遗漏；工具不会自动打包未提交工作区或完整原会话。完整任务包和本机原会话绑定用途不同：领取者执行独立任务，发布者稍后用成果恢复自己的工作。
+
+## Prompt 闭包与新任务接纳
+
+任务发布类似向未见过父会话的 sub-agent 分派任务。闭包由完整执行 prompt、固定源码/resources 和已声明的执行前提组成：执行者能知道第一步做什么、从哪里取得必要输入、必须保留哪些决策和行为、怎样产出结果及验证完成。原 session ID 仅服务于成果回送，不为领取者提供缺失上下文。
+
+目标 JSON 的必填内容为 `goal`、`context`、`delegation_reason`、非空 `acceptance` 数组，以及 `handoff`。示例见[目标文件](examples/proposal-goal.json)和[任务文件](examples/task-v1.json)。`handoff` 的键固定为：
+
+| 字段 | 约束与用途 |
+| --- | --- |
+| `non_goals`、`constraints`、`assumptions` | 字符串数组，可明确为空；说明不做的工作、既定决策/不变量及已有依据的假设 |
+| `environment` | 非空字符串，说明工具/版本、依赖准备和外部访问前提，不包含凭据 |
+| `stop_conditions` | 至少一条非空字符串，说明何时停止并报告缺失输入或其他阻塞 |
+| `review.first_step` | 非空字符串，说明使用已声明输入的第一个具体动作 |
+| `review.inputs` | 非空字符串，说明每项必要输入在固定源码或 resources 中的位置和用途 |
+| `review.completion` | 非空字符串，说明如何以必需产物和检查判断完成 |
+| `review.blocking_questions` | 字符串数组，准备和发布前必须为空 |
+
+所有数组中的现有条目必须为非空字符串。`review` 恰好包含表中四个键。没有额外假设时可以填空数组，不得编造已知事实、已定决策或复核结论来通过结构检查。仍依赖未交付的任务结果、缺少规则或决定时，先保留本地草稿、解决缺口；不能清空问题列表代替解决问题。
+
+作者 agent 在现有会话中完成语义复核，不增加模型调用或审批阶梯，也不称为独立盲审。程序只验证声明结构和已知阻塞，无法证明语义闭包。`taskboard/prompts.py` 从任务的 prompt 与完整声明派生实际执行输入，发布预览和运行器共享该组合逻辑；执行时遇到未提供的关键输入必须报告，不猜测父会话。
+
+新任务在提案准备、提案发布、CLI `validate` / `publish`、Pages 高级表单导出和 Actions 首次接纳 Issue 时执行发布条件校验。缺少 `handoff` 为 `PROMPT_CLOSURE_REQUIRED`，声明仍有阻塞为 `PROMPT_CLOSURE_BLOCKED`。直接创建原始 Issue 不能绕开接纳条件，但结构校验仍不能代替手工发布者的内容复核。
+
+协议版本继续为 V1。`validate_task` 允许读取没有 `handoff` 的旧内容；新发布使用更严格的 `validate_publication`。已经进入 canonical state 的旧任务不改内容、不补字段、不改变摘要，继续支持领取、执行、交付和验收。尚未确认的旧草稿需要满足新要求后才能进入任务板，不能通过手改状态分支迁移。
 
 ## 下载包与首次引导
 

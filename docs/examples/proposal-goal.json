@@ -1,0 +1,27 @@
+{
+  "goal": "Add boundary tests for the discount calculation in src/discount.py.",
+  "context": "Read docs/discount-rules.md and the existing tests/discount/ tests at the source commit selected by preparation. Cover zero amounts, discount boundaries, and invalid inputs explicitly defined by those rules. Modify only tests/discount/; report conflicts between the implementation and the rules rather than changing production code.",
+  "delegation_reason": "The rules, implementation, write scope, and verification command are defined, so test coverage can be completed independently before the publisher reviews the patch.",
+  "acceptance": [
+    "Add tests for missing zero-amount, discount-boundary, and invalid-input cases with expected results derived from the pinned rules.",
+    "Run python3 -m unittest discover -s tests/discount and report the result; do not hide conflicts between the rules and the implementation.",
+    "Change only tests/discount/ and return changes.patch, summary.md, and verification.json with coverage added and any unresolved items."
+  ],
+  "required_outputs": ["changes.patch", "summary.md", "verification.json"],
+  "handoff": {
+    "non_goals": ["Fixing or refactoring production code, or defining new discount rules."],
+    "constraints": ["Only tests/discount/ may change. Preserve production interfaces and derive expected values from the pinned discount rules."],
+    "assumptions": [],
+    "environment": "Use Python 3 and its standard-library unittest runner for local tests, with Git and read access to the declared repository. This task does not authorize installing extra dependencies or contacting external services; stop and report the requirement if the pinned tests need either.",
+    "stop_conditions": [
+      "Stop and name the missing path if src/discount.py, the existing tests/discount/ tests, or taskboard-inputs/docs/discount-rules.md is unavailable.",
+      "Stop and report unresolved items if a required expected value is not defined by the rules, verification needs undeclared dependencies or services, or completion would require changes outside tests/discount/."
+    ],
+    "review": {
+      "first_step": "Read taskboard-inputs/docs/discount-rules.md, then inspect src/discount.py and tests/discount/ to list rule-defined boundaries not covered by the existing tests.",
+      "inputs": "src/discount.py and tests/discount/ come from the source commit pinned by preparation. The --resource docs/discount-rules.md option supplies a hash-checked copy at taskboard-inputs/docs/discount-rules.md; it defines valid inputs and expected outcomes. The source conversation is not needed.",
+      "completion": "Add the missing rule-defined tests, run the declared unittest discovery command, check that the diff stays inside tests/discount/, and return the required patch, verification report, and summary of coverage and unresolved items.",
+      "blocking_questions": []
+    }
+  }
+}

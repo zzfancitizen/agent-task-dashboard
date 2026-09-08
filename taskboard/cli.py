@@ -21,7 +21,8 @@ import uuid
 from .agents import run_agent, run_checks
 from .github import GitHub
 from .local import LocalStore, atomic_json, hostname_name, regular_path, repository_name, session_id
-from .protocol import ProtocolError, format_command, format_task_issue, parse_task_issue, task_digest, validate_result, validate_task
+from .protocol import ProtocolError, format_command, format_task_issue, parse_task_issue, task_digest, validate_result, validate_task, validate_publication
+from .prompts import execution_prompt
 from .workspace import checked_path, export_patch, prepare_workspace, repository_url
 
 
@@ -51,7 +52,7 @@ def _record(client: GitHub, issue: int, *, allow_unconfirmed: bool = False) -> d
         if not allow_unconfirmed:
             raise ProtocolError('TASK_PENDING', 'The Actions controller has not confirmed this issue yet. Try again after the workflow runs.')
         item = client.issue(issue)
-        task = parse_task_issue(item['body'])
+        task = validate_publication(parse_task_issue(item['body']))
         return {'number': issue, 'spec': task, 'digest': task_digest(task), 'author': item['user']['login'], 'status': 'open', 'attempt': None, 'attempt_count': 0, 'processed': {}}
     validate_task(record['spec'])
     if record['digest'] != task_digest(record['spec']):
@@ -129,7 +130,7 @@ def _claim(store: LocalStore, client: GitHub, issue: int, wait: float, *, requir
 
 
 def _publish(args, store: LocalStore, client: GitHub, config: dict) -> None:
-    task = validate_task(_json_file(args.file))
+    task = validate_publication(_json_file(args.file))
     digest = task_digest(task)
     repository_url(task['source']['repository'], config)
     for resource in task['resources']:
@@ -324,7 +325,7 @@ def _run_task(args, store: LocalStore, client: GitHub, config: dict) -> None:
                 raise ProtocolError('STALE_ATTEMPT', 'The execution attempt changed while start was confirmed. No model was started.')
             _save_run(store, attempt['id'], phase='running')
             deadline = time.monotonic() + task['execution']['timeout_seconds']
-            prompt = task['prompt'] + '\n\nTaskboard execution constraints:\n' + json.dumps({'write_paths': task['source']['write_paths'], 'resources': task['resources'], 'acceptance': task['acceptance']}, ensure_ascii=False) + '\nOnly edit permitted write_paths. Resources are read-only. The host exports changes.patch, summary.md and verification.json outside this checkout; do not create those three files here. The host runs acceptance commands after you finish. Return your final response as a JSON object with exactly summary (string), assumptions (array of strings), and unresolved (array of strings). State limitations honestly; an empty unresolved array means you are explicitly reporting none.'
+            prompt = execution_prompt(task)
             outcome = run_agent(args.agent, prompt, workspace, directory / 'provider', deadline - time.monotonic())
             _save_run(store, attempt['id'], worker_session_id=outcome.session_id, phase='verifying')
             checks = run_checks(task['acceptance']['commands'], workspace, directory / 'checks', deadline - time.monotonic())
@@ -614,7 +615,7 @@ def parser() -> argparse.ArgumentParser:
     publish.add_argument('--workspace')
     propose = add('propose', 'Prepare a complete local delegation proposal for the user to review')
     propose.add_argument('--workspace', required=True)
-    propose.add_argument('--goal-file', required=True, help='UTF-8 JSON with goal, context, acceptance, and delegation_reason')
+    propose.add_argument('--goal-file', required=True, help='UTF-8 JSON with goal, context, acceptance, delegation_reason, and reviewed handoff')
     propose.add_argument('--title', required=True)
     propose.add_argument('--provider', choices=['codex', 'claude'], required=True)
     propose.add_argument('--session', required=True, help='Exact original provider session UUID supplied by its hook')
@@ -662,7 +663,7 @@ def main(argv=None) -> int:
     try:
         store = LocalStore(args.home)
         if args.command == 'validate':
-            task = validate_task(_json_file(args.file))
+            task = validate_publication(_json_file(args.file))
             print(f'Valid task: {task["title"]}\nSHA-256: {task_digest(task)}')
             return 0
         if args.command == 'init':

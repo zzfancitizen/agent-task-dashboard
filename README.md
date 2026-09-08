@@ -54,6 +54,8 @@
 
 工具安装向导的行为见[首次运行](#first-run)。它不会替你注册 provider 账号或提供额度。配置发布工具不会发布任务。
 
+已安装旧版本集成的项目，需要从当前 Pages 重新下载发布接入包，在同一项目和 provider 上再次安装，然后重新载入 hook、恢复原会话。源码安装用户可用更新后的代码重跑 [7.2 节](#setup)的 `install-integration`。已安装的 skill 和 runtime 不会仅因网页更新而自动升级。
+
 ### 2.2 日常发布：描述工作即可
 
 在已经配置的 Codex / Claude 会话里正常工作，也可以直接说：
@@ -69,17 +71,29 @@ Skill 引导 agent 判断工作是否适合独立交接。适合时，它会准�
 | Resources 及内容哈希 | 给出必要资料，并检查实际下载内容 |
 | 允许修改范围 | 明确本次委托可以改动的目录和文件 |
 | 验收要求、命令和产物 | 明确怎样判断完成，以及需要交回什么 |
+| 交接约束、运行前提、停止条件和闭包复核 | 带齐既定决策，说明缺少哪些条件时必须停止 |
 | 本机原会话关联 | 结果返回后能找到准确的原 Codex / Claude 会话 |
 
-Agent 应先展示具体任务和交接理由，再询问是否发布。**只有收到你对这份提案的明确同意后，才执行发布。** 任务复杂、hook 被触发、安装了 skill，都不等于同意发布；你也可以选择继续本地处理。
+Agent 应先复核准备结果中的完整 `execution_prompt`，补齐隐藏依赖，再展示具体任务和交接理由、询问是否发布。**只有收到你对这份提案的明确同意后，才执行发布。** 任务复杂、hook 被触发、安装了 skill，都不等于同意发布；你也可以选择继续本地处理。
 
 Agent 自动收集仓库、commit、资源哈希和准确会话关联，减少手工复制。目标、上下文和验收仍需由 agent 根据当前工作整理；程序不会凭空推断你的意图。影响任务的未提交改动必须先处理，不能静默遗漏；待交接的 commit 和资料还必须能从远端获取。
 
 发布成功会返回 GitHub Issue 链接。Actions 校验后刷新 Pages；页面尚未出现时，可以先在 Issue 和 Actions 查看进度。网络不确定时应重试**同一提案**，保留本地状态，避免重复创建任务。
 
-### 2.3 会话和上下文如何交接
+### 2.3 Prompt 闭包与原会话
 
-Issue 中发布的是独立任务包。原 session ID、登录凭据和完整聊天记录保留在发布者本机，不进入 Pages 或执行包。Hook 记录 provider 给出的准确 session 与目录，不猜测“最近一个会话”。
+发布任务应像给一个没有看过原对话的 sub-agent 分派工作：**完整执行 prompt、固定源码与 resources、已声明的运行前提，共同构成可独立执行的任务闭包。** 不必把整个仓库或聊天记录塞进 prompt，但不能依赖“上面讨论的方法”、未交付的另一任务结果，或只有发布者知道的关键决定。
+
+发布 agent 在当前会话中完成一次作者复核，明确写出：
+
+1. 执行者的第一个具体动作，以及所需输入的路径和用途。
+2. 已确定的决策、必须保留的行为、修改范围与不做的工作。
+3. 工具、依赖准备和访问前提，以及遇到缺失输入时的停止条件。
+4. 交付什么、运行哪些检查、怎样判断完成，以及仍待解决的问题。
+
+已知阻塞问题必须先解决，任务才可发布；不能用猜测或空泛文字填满字段。程序校验必填结构和声明的阻塞问题，**不证明任务在语义上完整**。复核由编写任务的 agent 完成，不把它称为独立盲审；不增加模型调用或额外审批环节。运行器会把任务的完整声明交给领取者的 agent，缺少关键输入时要求报告缺口，不能靠猜测原会话继续。
+
+Issue 中发布的是独立任务包。原 session ID 只用于把成果送回本机原会话，不是领取者的执行输入。原 session ID、登录凭据和完整聊天记录保留在发布者本机，不进入 Pages 或执行包。Hook 记录 provider 给出的准确 session 与目录，不猜测“最近一个会话”。
 
 领取者运行一个新的、独立的 agent 会话；成果回到发布者后，由原会话读取结果继续工作。因此 Codex 发出的任务可以由兼容的 Claude Code 执行，但这不等于把完整 Codex 会话迁移到 Claude。
 
@@ -278,14 +292,27 @@ Hook 通过 stdin 获取真实 session 与 cwd，写入本地关联，并把提�
 
 ### 7.3 agent 提案与明确发布
 
-下面是给 agent 或脚本集成者的低层接口，日常用户无需填写 JSON。先在源码目录之外写 UTF-8 目标文件：
+下面是给 agent 或脚本集成者的低层接口，日常用户无需填写 JSON。先在源码目录之外写 UTF-8 目标文件。下面与[完整目标示例](docs/examples/proposal-goal.json)使用同一折扣测试场景；按真实的已提交源码和规则调整，示例仓库及哈希不代表可直接执行的真实项目：
 
 ```json
 {
-  "goal": "补齐折扣计算的边界测试",
-  "context": "已有金额和折扣类型见代码；保持对外接口不变。",
-  "acceptance": ["覆盖零金额、零折扣和非法输入", "现有测试继续通过"],
-  "delegation_reason": "测试部分可独立执行，代码与验收条件已固定"
+  "goal": "为 src/discount.py 补充边界测试。",
+  "context": "以 docs/discount-rules.md 和已有 tests/discount/ 测试为依据，只修改 tests/discount/；实现与规则冲突时报告，不改生产代码。",
+  "acceptance": ["覆盖规则明确要求的零金额、折扣边界和非法输入", "运行声明的 unittest 命令并报告结果", "交回 changes.patch、summary.md 和 verification.json，说明覆盖和未解决事项"],
+  "delegation_reason": "输入、范围和验收已明确，测试工作可以独立完成后由发布者检查补丁。",
+  "handoff": {
+    "non_goals": ["修复生产代码或定义新折扣规则"],
+    "constraints": ["只修改 tests/discount/，保留生产接口；期望结果来自固定规则"],
+    "assumptions": [],
+    "environment": "使用 Python 3 和标准库 unittest；需要 Git 与声明仓库的读取权限。本任务不授权安装额外依赖或连接外部服务；如必须使用，停止并报告。",
+    "stop_conditions": ["源码、已有测试或固定规则文件缺失时停止并报告路径", "规则未定义必要期望值，或完成需要未声明依赖、服务或范围外改动时停止并报告"],
+    "review": {
+      "first_step": "先读 taskboard-inputs/docs/discount-rules.md，再对照 src/discount.py 和 tests/discount/ 列出缺少的规则边界测试。",
+      "inputs": "src/discount.py 和 tests/discount/ 来自准备时固定的源码 commit；--resource 提供 taskboard-inputs/docs/discount-rules.md，作为输入合法性和期望结果的依据。无需原对话。",
+      "completion": "补齐规则边界测试，运行声明的 unittest 命令，检查改动范围，交回补丁、验证报告及覆盖和 unresolved 摘要。",
+      "blocking_questions": []
+    }
+  }
 }
 ```
 
@@ -296,14 +323,16 @@ Hook 通过 stdin 获取真实 session 与 cwd，写入本地关联，并把提�
   --title "补齐折扣边界测试" \
   --provider codex --session ORIGINAL_SESSION_UUID \
   --resource docs/discount-rules.md \
-  --write-path tests \
-  --command-json '["python3", "-m", "unittest"]' \
+  --write-path tests/discount/ \
+  --command-json '["python3", "-m", "unittest", "discover", "-s", "tests/discount"]' \
   --size M --category code
 ```
 
 资源、修改范围和验收命令参数可重复；验收命令是 argv 数组，不是 shell 字符串。使用 provider/hook 给出的准确 session。目标 JSON 还可提供 `required_outputs`；刚安装集成时，skill helper 的 `context --callback UUID` 会给出可原样加入的 `excluded_paths`，用于排除未经改动的安装器管理文件。这不能排除源码改动。日常 skill 会处理这些字段；直接调用 `propose` 时需确保源码检查可通过。
 
-提案仅保存本地，展示内容并得到用户明确同意后再运行：
+`handoff` 必须包含示例中的全部字段，`review` 也必须恰好包含这四个字段。`non_goals`、`constraints` 和 `assumptions` 可明确填 `[]`；`stop_conditions` 至少一项，各数组中的每一项均为非空字符串。`environment` 和三个复核答案必须是非空字符串，`blocking_questions` 必须为空才能准备或发布。保留真实缺口并解决它，不能仅删除问题来通过校验。
+
+准备结果仅保存本地，并返回由任务派生的 `execution_prompt`。Agent 先通读这份完整执行输入，确认关键上下文、固定输入路径、范围和验收能支持独立执行；发现遗漏则修正并重新准备。复核后展示提案，得到用户明确同意后再运行：
 
 ```sh
 ./bin/taskboard publish-proposal PROPOSAL_UUID --approved
@@ -323,7 +352,9 @@ Hook 通过 stdin 获取真实 session 与 cwd，写入本地关联，并把提�
 
 表单导出不会创建 Issue。`publish` 是显式发布命令；原会话三个绑定参数必须一起给出，没有会话则全部省略。漏绑时，可在相同本地配置中用完全相同的任务包重跑并补上绑定。
 
-任务包含独立 prompt、同一 GitHub 主机上的 HTTPS 源码仓库、完整 40 位 commit SHA、资源路径及该 commit 内容的 SHA-256、修改范围、执行要求和验收。只支持已提交输入，`source.workspace_patch` 为 `null`。资源目标不能覆盖 checkout 已有文件。
+新发布任务包含独立 prompt、`handoff`、同一 GitHub 主机上的 HTTPS 源码仓库、完整 40 位 commit SHA、资源路径及该 commit 内容的 SHA-256、修改范围、执行要求和验收。只支持已提交输入，`source.workspace_patch` 为 `null`。资源目标不能覆盖 checkout 已有文件。Pages 高级表单导出、CLI `validate` / `publish` 及 Actions 首次接纳原始 Issue 都要求交接结构齐全且无已知阻塞；手工发布同样需要作者复核，结构通过不代表语义闭包已经被证明。
+
+任务仍使用 schema V1。升级前已进入确认状态的旧任务保持原始内容和摘要，即使没有 `handoff`，也可继续领取、执行和验收；未进入确认状态的草稿或新发布任务必须补齐新要求。不要为升级而改写旧任务或状态分支。
 
 任务及请求 JSON 最大 48 KiB；执行时限 1–14400 秒，最多尝试 1–5 次。自动产物 `changes.patch`、`summary.md`、`verification.json` 不要求 agent 在源码中再创建；额外必要产物应位于工作目录并符合 `write_paths`。
 
@@ -416,6 +447,7 @@ Hook 通过 stdin 获取真实 session 与 cwd，写入本地关联，并把提�
 | 上传或提交中断 | 保留目录并重试同一执行包/命令；使用相同成果和请求恢复，不能覆盖同名的不同内容 |
 | `EXECUTION_UNKNOWN` / `LOCAL_BUSY` | 先核对已有进程和本地记录，避免启动第二份执行；需要时停止并释放，再等待新认领 |
 | `PUBLISH_UNKNOWN` / `TASK_CONFLICT` | 核对 Issue 是否已创建，同提案/同任务内容可重试；变更内容使用新 task ID |
+| `PROMPT_CLOSURE_REQUIRED` / `PROMPT_CLOSURE_BLOCKED` | 更新项目中的发布集成；让 agent 从真实输入补齐 `handoff` 并解决已知阻塞，再复核完整 `execution_prompt`。不靠清空问题绕过缺口 |
 | 原 agent 没有显示发布 skill | 确认安装的是当前项目与 provider，按 provider 要求信任并重载 hook，恢复原会话 |
 | 原会话没有自动收到结果 | GitHub 通知不会自动启动本机 agent。回原会话要求同步；hook 只提示本地已有的新结果 |
 | `sync` 无结果或没有 session 绑定 | 确认当前账号是发布者、成果已提交、看板正确；没有绑定仍可下载手动使用 |
@@ -451,7 +483,7 @@ python3 -m http.server 8080 --bind 127.0.0.1 --directory site
 | [docs/github-only.md](docs/github-only.md) | 部署架构、评论传输和恢复机制 |
 | [发布 skill](integrations/taskboard-publish/SKILL.md) | 已有 agent 会话的提案与发布流程 |
 | [委派说明](resources/publisher-instructions.md) | 受管理原会话使用的说明 |
-| [任务示例](docs/examples/task-v1.json) / [成果示例](docs/examples/result-v1.json) | 协议结构示例 |
+| [目标示例](docs/examples/proposal-goal.json) / [任务示例](docs/examples/task-v1.json) / [成果示例](docs/examples/result-v1.json) | Agent 提案输入与协议结构示例 |
 | [工作流](.github/workflows/taskboard.yml) | 协调、成果保存和 Pages 更新 |
 | [CLI](taskboard/cli.py) / [向导](taskboard/wizard.py) | 本地执行入口 |
 | [协议](taskboard/protocol.py) / [状态](taskboard/state.py) / [传输](taskboard/transfers.py) | 校验、状态转换和成果桥 |

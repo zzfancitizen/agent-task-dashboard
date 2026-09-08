@@ -6,7 +6,7 @@ from pathlib import Path
 import time
 from urllib.parse import urlsplit
 
-from taskboard.protocol import ProtocolError, parse_command, parse_task_issue
+from taskboard.protocol import ProtocolError, parse_command, parse_task_issue, validate_publication
 from taskboard.state import new_task
 from taskboard.github import GitHub
 
@@ -80,7 +80,7 @@ class Gateway:
         elif path == base + '/issues' and method == 'POST':
             issue = {'number': len(self.issue_rows) + 1, 'html_url': f'https://{self.hostname}/{self.repo}/issues/{len(self.issue_rows) + 1}', 'title': body['title'], 'body': body['body'], 'user': {'login': self.actor}, 'created_at': '2026-09-08T00:00:00Z'}
             self.issue_rows.append(issue)
-            self.state['tasks'][str(issue['number'])] = new_task(issue, parse_task_issue(issue['body']), int(time.time()))
+            self.state['tasks'][str(issue['number'])] = new_task(issue, validate_publication(parse_task_issue(issue['body'])), int(time.time()))
             if self.lose_create:
                 self.lose_create = False
                 raise ProtocolError('GITHUB_OUTCOME_UNKNOWN', 'Fixture lost create response')

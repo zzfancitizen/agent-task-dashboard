@@ -179,18 +179,43 @@ def _private_fields(value):
             _private_fields(child)
 
 
+def validate_handoff(handoff, *, for_publication=False):
+    """Validate declared handoff notes, not their semantic completeness."""
+    _require(type(handoff) is dict,
+             "A self-contained handoff and author review are required for new tasks. Prepare them before publishing.",
+             "PROMPT_CLOSURE_REQUIRED")
+    _bounded(handoff)
+    _object(handoff, {"non_goals", "constraints", "assumptions", "environment", "stop_conditions", "review"}, field="handoff")
+    for field in ("non_goals", "constraints", "assumptions", "stop_conditions"):
+        _strings(handoff[field], "handoff." + field)
+    _require(bool(handoff["stop_conditions"]), "handoff.stop_conditions must explain when to stop and report missing inputs.")
+    _text(handoff["environment"], "handoff.environment")
+    review = handoff["review"]
+    _object(review, {"first_step", "inputs", "completion", "blocking_questions"}, field="handoff.review")
+    for field in ("first_step", "inputs", "completion"):
+        _text(review[field], "handoff.review." + field)
+    _strings(review["blocking_questions"], "handoff.review.blocking_questions")
+    if for_publication:
+        _require(not review["blocking_questions"],
+                 "Resolve the declared blocking questions before publishing. Keep this draft local until its inputs and decisions are available.",
+                 "PROMPT_CLOSURE_BLOCKED")
+    return copy.deepcopy(handoff)
+
+
 def validate_task(task):
     """Return an independent validated task; do not insert or normalize fields."""
     _bounded(task)
     _object(task, {"schema_version", "task_id", "revision", "mode", "title", "prompt",
                    "delegation_reason", "source", "resources", "execution", "acceptance"},
-            {"category", "size", "priority"}, field="task")
+            {"category", "size", "priority", "handoff"}, field="task")
     _integer(task["schema_version"], "schema_version", minimum=1, maximum=1)
     _uuid(task["task_id"], "task_id")
     _integer(task["revision"], "revision", minimum=1)
     _require(task["mode"] == "subtask", "Only subtask mode is supported.")
     for key in ("title", "prompt", "delegation_reason"):
         _text(task[key], key)
+    if "handoff" in task:
+        validate_handoff(task["handoff"])
     for key, choices in {"category": ("code", "docs", "research"),
                          "size": ("S", "M", "L"), "priority": ("normal", "high")}.items():
         if key in task:
@@ -239,6 +264,13 @@ def validate_task(task):
     _unique_file_paths(acceptance["required_outputs"], "Required outputs")
     _text(acceptance["review_notes"], "acceptance.review_notes", allow_empty=True)
     return copy.deepcopy(task)
+
+
+def validate_publication(task):
+    """Gate new publications without changing existing V1 records or digests."""
+    result = validate_task(task)
+    validate_handoff(result.get("handoff"), for_publication=True)
+    return result
 
 
 def task_digest(task):

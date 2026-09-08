@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import * as model from '../site/model.mjs';
 import {
   validateHostname, validateRepository, githubURL, taskRunURL, taskCommand,
   safeHTTPS, resourceURL, filterTasks, taskCounts, normalizeSnapshot, buildTaskExport, taskLeaderboards, executionDuration,
@@ -8,11 +10,22 @@ import {
 const snapshot = { schema_version: 1, repository: 'acme/task-board', hostname: 'github.acme.internal', generated_at: '2026-09-08T09:00:00Z', demo: false, tasks: [] };
 const makeTask = (number, status, title, agents, category = 'code') => ({ number, status, author: 'lin', spec: { title, prompt: '检查边界条件', execution: { compatible_agents: agents }, category } });
 const tasks = [makeTask(1, 'open', '补充 Date 测试', ['codex']), makeTask(2, 'running', '整理文档', ['claude'], 'docs'), makeTask(3, 'submitted', '调研队列', ['codex', 'claude'], 'research'), makeTask(4, 'accepted', '文档校验', ['codex'], 'docs')];
+const handoff = {
+  non_goals: ['不改动日期工具的公开接口。'], constraints: ['保留已有日期格式。'], assumptions: [],
+  environment: 'Use Python 3.13 and Git. Tests use the standard library and require no external services.',
+  stop_conditions: ['If the pinned source is missing, stop and report the missing input.'],
+  review: {
+    first_step: 'Read tests/test_dates.py and the date formatting code at the pinned source commit.',
+    inputs: 'The source repository contains the date helper and existing test fixtures in tests/.',
+    completion: 'Run both declared commands; return changes.patch, summary.md and verification.json.',
+    blocking_questions: [],
+  },
+};
 const form = {
   title: '验证日期边界', prompt: '为日期工具补充边界测试。', delegation_reason: '输入独立，验收明确。',
   repository: 'https://github.acme.internal/acme/source', base_commit: 'a'.repeat(40), write_paths: 'tests/\ndocs/',
   agents: ['codex', 'claude'], timeout_minutes: '30', max_attempts: '2', commands: '["python3","-m","unittest"]\n["git","diff","--check"]',
-  required_outputs: 'changes.patch\nsummary.md\nverification.json', review_notes: '检查边界覆盖。', resources: '', category: 'code', size: 'S', priority: 'normal',
+  required_outputs: 'changes.patch\nsummary.md\nverification.json', review_notes: '检查边界覆盖。', resources: '', category: 'code', size: 'S', priority: 'normal', handoff: JSON.stringify(handoff),
 };
 const options = { hostname: snapshot.hostname, taskId: 'a6fa0c0e-9410-48ee-a8e7-91f9b07bf871' };
 
@@ -80,7 +93,87 @@ test('exports immutable v1 task with argv arrays, bounded execution, and normali
   assert.equal(task.execution.timeout_seconds, 1800);
   assert.equal(task.execution.max_attempts, 2);
   assert.deepEqual(task.resources, []);
+  assert.deepEqual(task.handoff, handoff);
   assert.ok(!JSON.stringify(task).includes('session'));
+});
+
+test('new manual exports require an author-prepared handoff and block declared missing inputs', () => {
+  for (const value of [undefined, '', '  ']) {
+    assert.throws(() => buildTaskExport({ ...form, handoff: value }, options), /handoff/i);
+  }
+  const blocked = { ...handoff, review: { ...handoff.review, blocking_questions: ['Which date format is required?'] } };
+  assert.throws(() => buildTaskExport({ ...form, handoff: JSON.stringify(blocked) }, options), /blocking questions/i);
+  const task = buildTaskExport({ ...form, handoff: JSON.stringify({ ...handoff, non_goals: [], constraints: [], assumptions: [] }) }, options);
+  assert.deepEqual(task.handoff.non_goals, []);
+  assert.equal(task.handoff.review.inputs, handoff.review.inputs);
+});
+
+test('manual handoff JSON requires exact fields, concrete answers and an explicit stop condition', () => {
+  const without = (value, key) => Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
+  const invalid = [
+    null, [], without(handoff, 'environment'), { ...handoff, complete: true },
+    { ...handoff, constraints: [''] }, { ...handoff, assumptions: 'None' },
+    { ...handoff, environment: '   ' }, { ...handoff, environment: 'Python\0Git' },
+    { ...handoff, stop_conditions: [] }, { ...handoff, stop_conditions: [null] },
+    { ...handoff, review: without(handoff.review, 'inputs') },
+    { ...handoff, review: { ...handoff.review, passed: true } },
+    { ...handoff, review: { ...handoff.review, first_step: false } },
+    { ...handoff, review: { ...handoff.review, completion: '\n' } },
+    { ...handoff, review: { ...handoff.review, blocking_questions: [1] } },
+  ];
+  for (const value of invalid) assert.throws(() => buildTaskExport({ ...form, handoff: JSON.stringify(value) }, options), /handoff/i);
+  assert.throws(() => buildTaskExport({ ...form, handoff: '{' }, options), /JSON/);
+  const padded = { ...handoff, environment: `  ${handoff.environment}\n` };
+  assert.equal(buildTaskExport({ ...form, handoff: JSON.stringify(padded) }, options).handoff.environment, padded.environment, 'the author\'s handoff text must not be rewritten');
+});
+
+const handoffTextCases = JSON.parse(readFileSync(new URL('./fixtures/handoff-text.json', import.meta.url), 'utf8'));
+for (const { name, text, valid } of handoffTextCases) test(`handoff text matches Python validation: ${name}`, () => {
+  const variants = [
+    { ...handoff, environment: text },
+    { ...handoff, constraints: [text] },
+    { ...handoff, review: { ...handoff.review, first_step: text } },
+  ];
+  for (const value of variants) {
+    const exportTask = () => buildTaskExport({ ...form, handoff: JSON.stringify(value) }, options);
+    if (valid) assert.deepEqual(exportTask().handoff, value, 'valid Unicode and whitespace must remain unchanged');
+    else assert.throws(exportTask, /handoff/i);
+  }
+});
+
+test('copied prompt preserves authored instructions and carries the full declared execution context', () => {
+  assert.equal(typeof model.taskExecutionPrompt, 'function');
+  const resource = { type: 'git_file', repository: form.repository, commit: 'b'.repeat(40), path: 'docs/rules.md', destination: 'resources/rules.md', sha256: 'c'.repeat(64) };
+  const spec = buildTaskExport({ ...form, resources: JSON.stringify([resource]) }, options);
+  spec.prompt = '  检查这些边界。\n\nKeep this quoted example: `date(0)`\n';
+  const original = structuredClone(spec);
+  const copy = model.taskExecutionPrompt(spec);
+  assert.ok(copy.startsWith(spec.prompt), 'the user prompt must retain its whitespace, language and examples');
+  for (const input of [spec.title, spec.delegation_reason, spec.source.repository, spec.source.base_commit,
+    ...spec.source.write_paths, resource.commit, resource.path, resource.destination, resource.sha256,
+    ...spec.acceptance.required_outputs, spec.acceptance.review_notes, spec.handoff.environment,
+    spec.handoff.review.first_step, spec.handoff.review.inputs, spec.handoff.review.completion,
+    ...spec.handoff.stop_conditions]) assert.ok(copy.includes(input), `Missing declared context: ${input}`);
+  assert.match(copy, /"timeout_seconds": 1800/);
+  assert.match(copy, /"max_attempts": 2/);
+  assert.match(copy, /"compatible_agents"/);
+  assert.match(copy, /"commands"/);
+  assert.match(copy, /stop and report/i);
+  assert.deepEqual(spec, original, 'copying must not rewrite the immutable task');
+});
+
+test('legacy canonical tasks remain readable and copyable without inventing a handoff', () => {
+  assert.equal(typeof model.taskExecutionPrompt, 'function');
+  const spec = buildTaskExport(form, options);
+  delete spec.handoff;
+  const legacy = { ...tasks[0], spec };
+  assert.deepEqual(normalizeSnapshot({ ...snapshot, tasks: [legacy] }).tasks, [legacy]);
+  const copy = model.taskExecutionPrompt(spec);
+  assert.ok(copy.startsWith(spec.prompt));
+  assert.ok(copy.includes(spec.source.base_commit));
+  assert.ok(copy.includes(spec.acceptance.required_outputs[0]));
+  assert.ok(!copy.includes('"handoff"'));
+  assert.equal(Object.hasOwn(spec, 'handoff'), false);
 });
 
 test('task export rejects missing authority and shell-string commands with useful errors', () => {

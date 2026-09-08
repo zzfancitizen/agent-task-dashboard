@@ -56,6 +56,8 @@ You can also use **Copy agent instructions** on the page and let an existing CLI
 
 See [first-run guidance](#first-run) for installation behavior. The wizard does not register provider accounts or supply quota. Installing the publishing integration does not publish a task.
 
+For projects with an older integration, download the current publisher setup package from Pages, install it again for the same project and provider, then reload the hooks and resume the original session. Source-install users can rerun `install-integration` in [section 7.2](#setup) from updated code. Installed skills and runtimes do not update automatically when the website changes.
+
 ### 2.2 Everyday publishing: describe the work
 
 Work normally in the configured Codex / Claude session, or ask something like:
@@ -71,17 +73,29 @@ The skill guides the agent to assess whether the work can be handed off independ
 | Resources and content hashes | Provide the required material and verify the downloaded bytes |
 | Allowed write paths | Define the directories and files this task may change |
 | Acceptance criteria, commands, and outputs | Explain how to evaluate completion and what must be returned |
+| Handoff constraints, prerequisites, stop conditions, and closure review | Carry over established decisions and name conditions that require stopping |
 | Local binding to the original session | Find the exact original Codex / Claude session when the result arrives |
 
-The agent should show the concrete proposal and reason for delegation, then ask whether to publish. **It publishes only after your explicit agreement to that proposal.** Task complexity, a hook event, or installing the skill does not count as consent. You can choose to continue locally.
+The agent first reviews the complete `execution_prompt` returned by preparation and fixes hidden dependencies, then shows the concrete proposal and reason for delegation and asks whether to publish. **It publishes only after your explicit agreement to that proposal.** Task complexity, a hook event, or installing the skill does not count as consent. You can choose to continue locally.
 
 The agent collects the repository, commit, resource hashes, and exact session association to reduce manual copying. It still needs to write the goal, context, and acceptance criteria from the current work; the program cannot infer your intent by itself. Relevant uncommitted changes must be handled first, not silently omitted. The delegated commits and resources must also be available from the remote.
 
 A successful publication returns a GitHub Issue link. Actions validates it and refreshes Pages. If it has not appeared yet, check the Issue and workflow progress. After an uncertain network response, retry the **same proposal** and retain local state to avoid duplicate tasks.
 
-### 2.3 How session context is handed over
+### 2.3 Prompt closure and the original session
 
-The Issue contains an independent task package. The original session ID, credentials, and full conversation remain on the publisher's computer; they are not included in Pages or the execution download. The hook records the exact session and directory reported by the provider. It does not guess the latest session.
+Prepare a published task as you would delegate to a sub-agent that has never seen the source conversation. **The complete execution prompt, pinned source/resources, and declared prerequisites must together be sufficient to execute the task independently.** This is prompt closure. It does not require pasting an entire repository or transcript into the prompt, but the task cannot rely on "the approach above," another task's unavailable result, or a decision only the publisher knows.
+
+The author agent reviews the handoff in the current session and records:
+
+1. A concrete first action and the location and purpose of each necessary input.
+2. Established decisions, behavior to preserve, allowed changes, and work outside the scope.
+3. Tools, dependency preparation, access prerequisites, and conditions that require stopping.
+4. Required outputs, checks, how to establish completion, and any unresolved questions.
+
+Known blockers must be resolved before publication; guessed facts or generic filler do not complete the handoff. The program checks required structure and declared blockers; **it does not prove semantic completeness**. This is the author agent's review, not an independent blind audit. It adds no model call or approval ladder. The runner supplies the complete task declarations to the claiming agent and instructs it to report missing critical inputs instead of guessing the source conversation.
+
+The Issue contains an independent task package. The original session ID only routes results back to the local source session; it is not an executor input. The original session ID, credentials, and full conversation remain on the publisher's computer; they are not included in Pages or the execution download. The hook records the exact session and directory reported by the provider. It does not guess the latest session.
 
 The claimer runs a new, independent agent session. The original session reads the returned artifacts and continues the publisher's work. A task published through Codex can therefore run through compatible Claude Code, but this does not migrate an entire Codex session into Claude.
 
@@ -280,14 +294,27 @@ Hooks receive the real session and cwd on stdin, store the local association, an
 
 ### 7.3 Agent proposals and explicit publication
 
-These are low-level interfaces for agents and script authors. Everyday users do not need to fill in JSON. Write a UTF-8 goal file outside the source directory:
+These are low-level interfaces for agents and script authors. Everyday users do not need to fill in JSON. Write a UTF-8 goal file outside the source directory. This uses the same discount-test scenario as the [complete goal example](docs/examples/proposal-goal.json); adapt it to the actual committed source and rules. Example repositories and hashes do not identify a runnable real project:
 
 ```json
 {
-  "goal": "Add boundary tests for discount calculations",
-  "context": "Existing amount and discount types are defined in the code. Preserve the public interface.",
-  "acceptance": ["Cover zero amount, zero discount, and invalid input", "Existing tests still pass"],
-  "delegation_reason": "The test work is independent, with pinned code and clear acceptance criteria"
+  "goal": "Add boundary tests for src/discount.py.",
+  "context": "Use docs/discount-rules.md and existing tests/discount/. Change only tests/discount/; report implementation/rule conflicts without changing production code.",
+  "acceptance": ["Cover rule-defined zero amounts, discount boundaries, and invalid inputs", "Run the declared unittest command and report the result", "Return changes.patch, summary.md, and verification.json with added coverage and unresolved items"],
+  "delegation_reason": "Inputs, scope, and verification are defined, so the tests can be completed independently before the publisher reviews the patch.",
+  "handoff": {
+    "non_goals": ["Fixing production code or defining new discount rules"],
+    "constraints": ["Change only tests/discount/, preserve production interfaces, and derive expected values from the pinned rules"],
+    "assumptions": [],
+    "environment": "Use Python 3 and standard-library unittest, with Git and read access to the declared repository. This task does not authorize installing extra dependencies or contacting external services; stop and report if either is required.",
+    "stop_conditions": ["Stop and name any missing source, existing tests, or pinned rules file", "Stop and report if the rules leave a required expected value undefined, or completion needs undeclared dependencies, services, or changes outside the scope"],
+    "review": {
+      "first_step": "Read taskboard-inputs/docs/discount-rules.md, then inspect src/discount.py and tests/discount/ to list missing rule-defined boundary tests.",
+      "inputs": "src/discount.py and tests/discount/ come from the source commit pinned by preparation. --resource supplies taskboard-inputs/docs/discount-rules.md to define valid inputs and expected results. No source conversation is needed.",
+      "completion": "Add rule-defined boundary tests, run the declared unittest command, check the write scope, and return the patch, verification report, and summary of coverage and unresolved items.",
+      "blocking_questions": []
+    }
+  }
 }
 ```
 
@@ -298,14 +325,16 @@ These are low-level interfaces for agents and script authors. Everyday users do 
   --title "Add discount boundary tests" \
   --provider codex --session ORIGINAL_SESSION_UUID \
   --resource docs/discount-rules.md \
-  --write-path tests \
-  --command-json '["python3", "-m", "unittest"]' \
+  --write-path tests/discount/ \
+  --command-json '["python3", "-m", "unittest", "discover", "-s", "tests/discount"]' \
   --size M --category code
 ```
 
 Resource, write-path, and command options are repeatable. Verification commands are argv arrays, not shell strings. Use the exact session supplied by the provider/hook. Goal JSON can also include `required_outputs`. After a fresh integration installation, the skill helper's `context --callback UUID` returns exact `excluded_paths` that may be copied into the goal JSON to exclude unchanged installer-managed files. These exclusions cannot hide source changes. The everyday skill handles this; direct `propose` callers must ensure the source check can pass.
 
-The proposal is local only. After showing it and receiving the user's explicit agreement, run:
+`handoff` requires all the example's keys, and `review` requires exactly its four keys. `non_goals`, `constraints`, and `assumptions` may be explicitly `[]`; `stop_conditions` needs at least one entry, and every array entry must be a nonempty string. `environment` and the three review answers must be nonempty strings. `blocking_questions` must be empty before preparation or publication. Resolve real gaps; deleting their descriptions does not resolve them.
+
+Preparation saves a local proposal and returns its derived `execution_prompt`. The agent reads this complete executor input to check that the context, pinned input locations, scope, and acceptance support independent execution; it fixes omissions and prepares again first. After this review, showing the proposal, and receiving the user's explicit agreement, run:
 
 ```sh
 ./bin/taskboard publish-proposal PROPOSAL_UUID --approved
@@ -325,7 +354,9 @@ Advanced use still supports exporting JSON from the manual Pages form or prepari
 
 Exporting a form does not create an Issue. `publish` is an explicit publication command. Supply all three original-session binding options together, or omit all three when no session is available. If binding was omitted, rerun the exact same task package in the same local configuration with the binding options.
 
-A task contains an independent prompt, an HTTPS source repository on the same GitHub host, a full 40-character commit SHA, resource paths and SHA-256 hashes of their content at that commit, a write scope, execution requirements, and acceptance checks. Only committed inputs are supported; `source.workspace_patch` must be `null`. Resource destinations cannot overwrite existing checkout files.
+New publications contain an independent prompt, `handoff`, an HTTPS source repository on the same GitHub host, a full 40-character commit SHA, resource paths and SHA-256 hashes of their content at that commit, a write scope, execution requirements, and acceptance checks. Only committed inputs are supported; `source.workspace_patch` must be `null`. Resource destinations cannot overwrite existing checkout files. The advanced Pages export, CLI `validate` / `publish`, and Actions admission of a new raw Issue all require the handoff structure and no declared blockers. Manual publication still needs author review; valid structure is not proof of semantic closure.
+
+Tasks still use schema V1. Tasks already in confirmed state before this upgrade keep their original contents and digests and can still be claimed, run, and accepted without `handoff`. Drafts not yet admitted and new publications must meet the new requirements. Do not rewrite old tasks or the state branch as an upgrade step.
 
 Task/request JSON is limited to 48 KiB. Runtime limits are 1–14400 seconds and 1–5 attempts. The tool generates `changes.patch`, `summary.md`, and `verification.json`; the agent need not create them in the source checkout. Additional required outputs must be inside the workspace and permitted by `write_paths`.
 
@@ -418,6 +449,7 @@ Prefix commands with `./bin/taskboard`. Shared options are `--repo`, `--hostname
 | Network fails during upload or submission | Keep the files and retry the same package/command. Recovery reuses matching artifacts and requests, not different bytes under the same name |
 | `EXECUTION_UNKNOWN` / `LOCAL_BUSY` | Inspect existing processes and local records before starting anything else. Stop and release if appropriate, then wait for a new valid claim |
 | `PUBLISH_UNKNOWN` / `TASK_CONFLICT` | Check whether the Issue already exists. Retry the same proposal/task content; changed content needs a new task ID |
+| `PROMPT_CLOSURE_REQUIRED` / `PROMPT_CLOSURE_BLOCKED` | Update the project's publishing integration. Have the agent complete `handoff` from real inputs, resolve blockers, and reread the complete `execution_prompt`; emptying the question list does not fix missing inputs |
 | The original agent does not show the publishing skill | Check the project and provider installation, trust/reload hooks as required, and resume the original session |
 | The original session does not receive results automatically | A GitHub notification does not start a local agent. Ask the original session to sync; hooks announce only results already present locally |
 | `sync` finds nothing or no session is bound | Verify you are the publisher, delivery is confirmed, and the board is correct. Unbound results can still be downloaded and used manually |
@@ -453,7 +485,7 @@ Open the [local development preview](http://127.0.0.1:8080/) and explicitly ente
 | [docs/github-only.md](docs/github-only.md) | Deployment architecture, comment transfers, and recovery |
 | [Publishing skill](integrations/taskboard-publish/SKILL.md) | Proposals and publication in existing agent sessions |
 | [Publisher instructions](resources/publisher-instructions.md) | Instructions for managed source sessions |
-| [Task example](docs/examples/task-v1.json) / [result example](docs/examples/result-v1.json) | Protocol examples |
+| [Goal example](docs/examples/proposal-goal.json) / [Task example](docs/examples/task-v1.json) / [result example](docs/examples/result-v1.json) | Agent proposal input and protocol examples |
 | [Workflow](.github/workflows/taskboard.yml) | Coordination, artifact storage, and Pages updates |
 | [CLI](taskboard/cli.py) / [wizard](taskboard/wizard.py) | Local execution entries |
 | [Protocol](taskboard/protocol.py) / [state](taskboard/state.py) / [transfers](taskboard/transfers.py) | Validation, transitions, and artifact bridge |

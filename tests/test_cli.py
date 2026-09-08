@@ -81,6 +81,51 @@ class CLITests(unittest.TestCase):
         self.file.write_text(' ' * (49 * 1024))
         self.assertEqual(self.command('validate', str(self.file))[0], 1)
 
+    def test_manual_publish_refuses_missing_closure_and_known_blockers_before_api(self):
+        from tests.test_prompt_closure import handoff
+        for notes in (None, handoff()):
+            task = json.loads(self.file.read_text())
+            task.pop('handoff', None)
+            if notes is not None:
+                notes['review']['blocking_questions'] = ['The API contract is still only in the source chat.']
+                task['handoff'] = notes
+            self.file.write_text(json.dumps(task))
+            response = self.command('publish', str(self.file))
+            self.assertEqual(response[0], 1, response)
+            self.assertIn('PROMPT_CLOSURE', response[2])
+            self.assertEqual(self.gateway.operations, [])
+            self.assertEqual(self.gateway.issue_rows, [])
+
+    def test_existing_legacy_task_can_run_submit_and_be_accepted_without_rewriting(self):
+        import time
+        from taskboard.protocol import format_task_issue, task_digest
+        from taskboard.state import new_task
+        self.spec.pop('handoff', None)
+        digest = task_digest(self.spec)
+        issue = {'number': 1, 'html_url': 'https://git.corp.example/company/tasks/issues/1', 'title': self.spec['title'], 'body': format_task_issue(self.spec), 'user': {'login': 'alice'}, 'created_at': '2026-09-08T00:00:00Z'}
+        self.gateway.issue_rows.append(issue)
+        self.gateway.state['tasks']['1'] = new_task(issue, self.spec, int(time.time()))
+        response = self.command('run', '1', '--agent', 'codex', '--wait', '0')
+        self.assertEqual(response[0], 0, response)
+        result_id = self.gateway.state['tasks']['1']['result']['id']
+        self.assertEqual(self.command('accept', '1', '--result', result_id)[0], 0)
+        record = self.gateway.state['tasks']['1']
+        self.assertEqual(record['status'], 'accepted')
+        self.assertEqual(record['digest'], digest)
+        self.assertEqual(record['result']['manifest']['task_digest'], digest)
+        self.assertNotIn('handoff', record['spec'])
+
+    def test_unconfirmed_issue_without_handoff_cannot_queue_a_claim(self):
+        from taskboard.protocol import format_task_issue
+        self.gateway.delay = True
+        task = dict(self.spec)
+        task.pop('handoff', None)
+        self.gateway.issue_rows.append({'number': 1, 'body': format_task_issue(task), 'user': {'login': 'alice'}})
+        response = self.command('claim', '1', '--wait', '0')
+        self.assertEqual(response[0], 1, response)
+        self.assertIn('PROMPT_CLOSURE_REQUIRED', response[2])
+        self.assertEqual(self.gateway.comments, [])
+
     def test_publish_recovers_lost_create_response_without_duplicate_issue(self):
         self.gateway.lose_create = True
         self.assertEqual(self.command('publish', str(self.file))[0], 1)
@@ -103,7 +148,14 @@ class CLITests(unittest.TestCase):
         from taskboard import publishing
         self.git('remote', 'add', 'origin', 'https://git.corp.example/company/source.git')
         goal = self.root / 'goal.json'
-        goal.write_text(json.dumps({'goal': 'Update the value', 'context': 'A separate part of the Python source.', 'acceptance': ['The source value is 2.'], 'delegation_reason': 'Can be executed independently.'}))
+        goal.write_text(json.dumps({
+            'goal': 'Update the value', 'context': 'src/main.py contains value = 1.',
+            'acceptance': ['The source value is 2.'], 'delegation_reason': 'Can be executed independently.',
+            'handoff': {'non_goals': [], 'constraints': ['Only update the requested value.'], 'assumptions': [],
+                        'environment': 'Python standard library; no external services.',
+                        'stop_conditions': ['Stop and report if the initial value differs from 1.'],
+                        'review': {'first_step': 'Read src/main.py.', 'inputs': 'The pinned source and declared copy at taskboard-inputs/src/main.py contain the current value.', 'completion': 'Run unittest and return the patch and verification record.', 'blocking_questions': []}},
+        }))
         original = publishing._git
         def advertised_refs(root, *argv, **kwargs):
             if argv[0] == 'ls-remote':
@@ -133,6 +185,31 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn('PENDING', errors)
         self.assertFalse((self.home / 'runs').exists())
+
+    def test_worker_receives_pinned_inputs_handoff_and_delivery_contract(self):
+        self.spec['prompt'] = 'Change the value in src/main.py from 1 to 2.'
+        self.spec['handoff'] = {
+            'non_goals': ['Do not introduce new features.'],
+            'constraints': ['Preserve the filename and change only the requested value.'],
+            'assumptions': [],
+            'environment': 'The supplied Python interpreter and its standard library are available.',
+            'stop_conditions': ['If src/main.py does not contain value = 1, stop and report the mismatch.'],
+            'review': {'first_step': 'Read src/main.py.', 'inputs': 'src/main.py is in the pinned source checkout.', 'completion': 'Run the declared assertion and return changes.patch, summary.md, and verification.json.', 'blocking_questions': []},
+        }
+        self.file.write_text(json.dumps(self.spec))
+        self.publish()
+        captured = self.root / 'worker-request.json'
+        with patch.dict(os.environ, {'CLI_TEST_ARGV': str(captured)}):
+            response = self.command('run', '1', '--agent', 'codex', '--wait', '0')
+        self.assertEqual(response[0], 0, response)
+        received = json.loads(captured.read_text())['prompt']
+        self.assertIn(self.spec['source']['repository'], received)
+        self.assertIn(self.spec['source']['base_commit'], received)
+        self.assertIn(self.spec['handoff']['stop_conditions'][0], received)
+        self.assertIn(self.spec['handoff']['environment'], received)
+        self.assertIn('verification.json', received)
+        self.assertIn('"value = 2"', received.replace('\\"', '"'))
+        self.assertNotIn(str(self.home), received)
 
     def test_download_retry_fence_rejects_stale_digest_and_new_claim_generation(self):
         from taskboard.protocol import task_digest
