@@ -52,8 +52,8 @@
         <a class="nav-item" id="nav-repository" aria-disabled="true"><svg class="icon"><use href="#i-github"/></svg><span>GitHub 仓库</span><svg class="icon small"><use href="#i-arrow-up"/></svg></a>
       </nav>
       <div class="sidebar-bottom">
-        <div class="local-card"><div class="local-card-icon"><svg class="icon"><use href="#i-terminal"/></svg></div><strong>你的 Agent，你的环境</strong><p>在本地执行任务，<br>把可验证的结果带回来。</p><button class="text-button" data-open-guide type="button">连接本地 CLI <svg class="icon small"><use href="#i-arrow"/></svg></button></div>
-        <div class="sidebar-footer"><span class="tiny-dot"></span> Powered by GitHub<span class="version">v0.1</span></div>
+        <div class="local-card"><div class="local-card-icon"><svg class="icon"><use href="#i-terminal"/></svg></div><strong>你的 Agent，你的环境</strong><p>在本地执行任务，<br>把可验证的结果带回来。</p><button class="text-button" data-open-guide type="button">下载后跟随引导 <svg class="icon small"><use href="#i-arrow"/></svg></button></div>
+        <div class="sidebar-footer"><span class="tiny-dot"></span> Powered by GitHub<span class="version">v0.2</span></div>
       </div>
     </aside>
     <div class="main-column">
@@ -75,6 +75,13 @@
           <div class="board-bottom"><span class="sync-indicator"><span class="tiny-dot" id="sync-dot"></span><span id="sync-status">读取快照中</span></span><span>领取请求经 GitHub Actions 确认后生效</span></div>
         </section>
         <div class="board-note"><svg class="icon small"><use href="#i-info"/></svg><p>任务在本地运行。看板展示异步同步的状态，最终领取与验收记录以 GitHub 为准。</p><button class="text-button" data-open-guide type="button">了解工作方式 <svg class="icon small"><use href="#i-arrow-up"/></svg></button></div>
+        <section class="leaderboards" aria-labelledby="rankings-title">
+          <div class="rankings-heading"><div><span class="eyebrow">GUILD CONTRIBUTIONS / 公会名录</span><h2 id="rankings-title">每一次接力，都有记录。</h2></div><p id="ranking-scope">正在读取已确认的任务记录…</p></div>
+          <div class="ranking-panels">
+            <section class="ranking-panel" aria-labelledby="publishers-title"><div class="ranking-title"><svg class="icon"><use href="#i-file"/></svg><h3 id="publishers-title">发布委托榜</h3></div><p>按独立任务计数，已取消的委托不计入。</p><ol id="leaderboard-published" class="ranking-list" aria-live="polite"><li class="ranking-empty">正在读取…</li></ol></section>
+            <section class="ranking-panel" aria-labelledby="completers-title"><div class="ranking-title"><svg class="icon"><use href="#i-circle-check"/></svg><h3 id="completers-title">完成委托榜</h3></div><p>仅统计已验收的任务，归功于实际执行者。</p><ol id="leaderboard-completed" class="ranking-list" aria-live="polite"><li class="ranking-empty">正在读取…</li></ol></section>
+          </div>
+        </section>
         <footer class="page-footer"><span>Agent Relay<span class="footer-divider">/</span>让协作保持简单。</span><button class="text-button muted" id="try-demo-footer" type="button">体验演示工作空间 <svg class="icon small"><use href="#i-arrow"/></svg></button></footer>
       </main>
     </div>
@@ -82,13 +89,33 @@
 
   <dialog id="detail-dialog" class="dialog detail-dialog" aria-labelledby="detail-title"><div id="detail-content"></div></dialog>
 
+  <dialog id="download-dialog" class="dialog download-dialog" aria-labelledby="download-title"><div id="download-content"></div></dialog>
+
   <dialog id="guide-dialog" class="dialog guide-dialog" aria-labelledby="guide-title">
     <div class="dialog-header"><div><span class="eyebrow">HOW IT WORKS</span><h2 id="guide-title">从一个任务，到一次交付。</h2></div><button class="icon-button" data-close-dialog type="button" aria-label="关闭使用指南"><svg class="icon"><use href="#i-close"/></svg></button></div>
-    <div class="dialog-body"><p class="dialog-intro">GitHub 记录协作，本地 CLI 负责执行。看板不需要登录，也不保存你的密钥。</p><ol class="guide-steps"><li><span>01</span><div><h3>连接任务仓库</h3><p>在已配置的仓库中启用 GitHub Actions 和 Pages。浏览此看板无需账户；发布和领取使用本地已有的 GitHub CLI 身份。</p><div class="code-line"><code id="guide-auth-command">gh auth login --hostname github.com</code><button class="icon-button" id="copy-auth" type="button" aria-label="复制 GitHub CLI 登录命令"><svg class="icon small"><use href="#i-copy"/></svg></button></div><div class="code-line"><code id="guide-init-command">taskboard --repo owner/repo init</code><button class="icon-button" id="copy-init" type="button" aria-label="复制初始化命令"><svg class="icon small"><use href="#i-copy"/></svg></button></div></div></li><li><span>02</span><div><h3>发布一项独立任务</h3><p>说明目标、允许修改的路径和验收条件，并固定源代码版本。在「发布任务」中导出 JSON，通过本地 CLI 创建 GitHub Issue。</p><div class="code-line"><code id="guide-publish-command">taskboard publish task.json</code><button class="icon-button" id="copy-publish-guide" type="button" aria-label="复制发布命令"><svg class="icon small"><use href="#i-copy"/></svg></button></div></div></li><li><span>03</span><div><h3>领取，在本地执行</h3><p>先安装本地启动器，再点击「领取并运行」，或复制任务的 CLI 命令。CLI 等待 GitHub 确认归属后，创建独立工作目录并运行兼容的 Agent。</p><div class="code-line"><code>taskboard install-launcher</code><button class="icon-button" data-copy="taskboard install-launcher" type="button" aria-label="复制启动器安装命令"><svg class="icon small"><use href="#i-copy"/></svg></button></div><p class="field-help">一键启动支持 macOS；其他平台请复制 CLI 命令。需已安装 Git、GitHub CLI，以及 Codex 或 Claude Code。</p></div></li><li><span>04</span><div><h3>检查结果，完成接力</h3><p>执行结果和验证记录回传到 GitHub。发布者检查交付后手动验收，源代码不会自动合并。</p></div></li></ol><div class="notice"><svg class="icon"><use href="#i-globe"/></svg><p>这是公开协作空间。任务说明与结果对访客可见，请仅发布适合公开的内容。</p></div></div><div class="dialog-footer"><a class="button secondary" id="guide-docs-link" hidden target="_blank" rel="noopener noreferrer">查看仓库文档 <svg class="icon small"><use href="#i-arrow-up"/></svg></a><button class="button primary" data-close-dialog type="button">明白了 <svg class="icon small"><use href="#i-check"/></svg></button></div>
+    <div class="dialog-body">
+      <p class="dialog-intro">在熟悉的 Agent 会话中发起委托，让伙伴下载任务，在自己的电脑上接力。</p>
+      <ol class="guide-steps">
+        <li><span>01</span><div><h3>让现有 Agent 整理并发布</h3><p>打开「发布任务」，复制接入指引给正在使用的 Codex 或 Claude Code，也可下载发布接入包。Agent 整理完整上下文、资料与验收标准，先向你展示提案，只有你明确同意后才发布。</p></div></li>
+        <li><span>02</span><div><h3>领取任务，选择电脑系统</h3><p>在真实任务详情点击「领取任务」，选择 Windows、macOS 或 Linux 并下载运行包。完整解压后，双击包内的 Start-Taskboard 启动文件。</p></div></li>
+        <li><span>03</span><div><h3>跟随首次引导，选择 Agent</h3><p>首次使用会检查 Python、Git、GitHub CLI 和 Agent。缺少工具时提供官方安装指引，并引导登录。选择兼容 Agent 后，程序重新核验任务版本，等待 GitHub 确认领取，再开始执行。</p><p class="field-help">Windows 与 macOS 可能提示未知来源；Linux 文件管理器可能要求允许脚本作为程序运行。请按系统及组织要求核验来源。这是脚本包，未做原生应用签名。</p></div></li>
+        <li><span>04</span><div><h3>自动交付，由发布者验收</h3><p>执行结果和验证记录回传 GitHub，并通知发布者。原 Agent 会话可以继续检查结果；发布者验收后才计入完成榜，源代码不会自动合并。</p></div></li>
+      </ol>
+      <div class="notice"><svg class="icon"><use href="#i-github"/></svg><p>发布与领取使用你的 GitHub 身份和仓库原有访问权限，无需加入应用成员名单。源代码仓库仍需可读权限。看板不保存登录密钥；任务与结果按仓库及 Pages 的访问设置可见。</p></div>
+    </div>
+    <div class="dialog-footer"><a class="button secondary" id="guide-docs-link" hidden target="_blank" rel="noopener noreferrer">查看仓库文档 <svg class="icon small"><use href="#i-arrow-up"/></svg></a><button class="button primary" data-close-dialog type="button">明白了 <svg class="icon small"><use href="#i-check"/></svg></button></div>
   </dialog>
 
   <dialog id="publish-dialog" class="dialog publish-dialog" aria-labelledby="publish-title">
-    <div class="dialog-header"><div><span class="eyebrow">GUILD COMMISSION / 委托登记处</span><h2 id="publish-title">写下一份新委托</h2><p>写清目标、备好资料，等待伙伴接下这份挑战。</p></div><button class="icon-button" data-close-dialog type="button" aria-label="关闭发布任务"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="dialog-header"><div><span class="eyebrow">GUILD COMMISSION / 委托登记处</span><h2 id="publish-title">让你的 Agent 准备这份委托</h2><p>沿用当前会话的上下文，先看提案，再确认发布。</p></div><button class="icon-button" data-close-dialog type="button" aria-label="关闭发布任务"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="dialog-body publisher-body">
+      <p class="dialog-intro">把接入指引交给你正在使用的 Codex 或 Claude Code。它会整理目标、固定代码版本、必要资料与验收要求，在你同意后发布。</p>
+      <label class="field">给我的 Agent 的接入指引<textarea id="publisher-instructions" rows="6" readonly aria-describedby="publisher-instruction-help" placeholder="连接真实任务仓库后，这里会显示接入指引。"></textarea><span id="publisher-instruction-help" class="field-help">复制到当前 Agent 会话。提案通过后再发布，避免遗漏原会话的关键上下文。</span></label>
+      <div class="publisher-actions"><button id="copy-publisher-instructions" class="button primary" type="button"><svg class="icon"><use href="#i-copy"/></svg>复制指引给我的 Agent</button><button id="publisher-setup" class="button secondary" type="button"><svg class="icon"><use href="#i-download"/></svg>下载发布接入包</button></div>
+      <p id="publisher-unavailable" class="publisher-unavailable" role="status" hidden></p>
+      <div class="publisher-flow"><span>Agent 整理上下文</span><svg class="icon small"><use href="#i-arrow"/></svg><span>你确认发布提案</span><svg class="icon small"><use href="#i-arrow"/></svg><span>结果回到原会话</span></div>
+    </div>
+    <details class="publish-advanced"><summary>高级用法 · 手动填写并导出任务 JSON</summary>
     <form id="publish-form" novalidate>
       <div class="dialog-body form-body"><div class="form-section-heading"><span>01</span><h3>委托目标</h3><p>这次接力，需要完成什么？</p></div><label class="field">任务标题 <span class="required">*</span><input name="title" required maxlength="200" placeholder="例如：为日期格式化工具补齐边界测试"></label><div class="form-row three"><label class="field">任务类型<select name="category"><option value="code">代码</option><option value="docs">文档</option><option value="research">调研</option></select></label><label class="field">任务规模<select name="size"><option value="S">★☆☆ · S 小型委托</option><option value="M" selected>★★☆ · M 中型委托</option><option value="L">★★★ · L 大型委托</option></select></label><label class="field">优先级<select name="priority"><option value="normal">常规</option><option value="high">优先处理</option></select></label></div><label class="field">任务说明 <span class="required">*</span><textarea name="prompt" required rows="5" placeholder="描述目标、背景、执行步骤与边界。清楚说明要交付哪些结果。"></textarea></label><label class="field">为什么适合独立委派？ <span class="required">*</span><textarea name="delegation_reason" required rows="2" placeholder="例如：输入明确，可独立验证，不依赖发起者的会话上下文。"></textarea></label>
         <div class="form-section-heading"><span>02</span><h3>任务地图与资料</h3><p>固定版本，明确探索边界</p></div><label class="field">源代码仓库 <span class="required">*</span><input name="repository" type="url" required placeholder="https://github.com/owner/repo"><span class="field-help" id="source-host-help">使用当前 GitHub 域名下的 HTTPS 仓库地址。</span></label><label class="field">基准提交 <span class="required">*</span><input name="base_commit" class="mono" required maxlength="40" placeholder="完整的 40 位 commit SHA"><span class="field-help">可在源代码仓库运行 <code>git rev-parse HEAD</code> 获取。</span></label><label class="field">允许修改的目录 <span class="required">*</span><textarea name="write_paths" rows="2" required class="mono" placeholder="tests/&#10;docs/"></textarea><span class="field-help">每行一个相对目录，不允许绝对路径或 ..</span></label>
@@ -97,6 +124,7 @@
 verification.json
 summary.md</textarea><span class="field-help">每行一个相对文件路径。</span></label><label class="field">验收备注<textarea name="review_notes" rows="2" placeholder="发布者需要重点检查的事项。"></textarea></label><div class="notice"><svg class="icon"><use href="#i-globe"/></svg><p>导出的任务将在公开 GitHub Issue 中发布。请勿填写密钥、私人会话 ID 或敏感数据。</p></div><p id="form-error" class="form-error" role="alert" hidden></p><div id="export-success" class="export-success" hidden><svg class="icon"><use href="#i-circle-check"/></svg><div><strong>任务文件已生成</strong><p>下载后，在文件所在目录运行：</p><div class="code-line"><code id="publish-command"></code><button class="icon-button" id="copy-publish-command" type="button" aria-label="复制发布命令"><svg class="icon small"><use href="#i-copy"/></svg></button></div></div></div></div><div class="dialog-footer"><span class="footer-hint">JSON v1 · 最多 48 KB</span><button class="button secondary" data-close-dialog type="button">取消</button><button class="button primary" type="submit"><svg class="icon"><use href="#i-download"/></svg>导出任务 JSON</button></div>
     </form>
+    </details>
   </dialog>
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
   <noscript><div class="noscript-message">请启用 JavaScript 以查看任务快照。任务源文件位于 <a href="./tasks.json">tasks.json</a>。</div></noscript>
