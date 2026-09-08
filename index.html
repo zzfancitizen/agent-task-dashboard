@@ -57,7 +57,7 @@
       </div>
     </aside>
     <div class="main-column">
-      <header class="topbar"><div class="breadcrumb">Guild hall<svg class="icon small"><use href="#i-chevron"/></svg><span>Quest board</span></div><div class="topbar-right"><span class="public-label"><svg class="icon small"><use href="#i-globe"/></svg>Public board</span><span class="topbar-separator"></span><span class="workspace-avatar" title="Public access. No browser sign-in required.">AR</span></div></header>
+      <header class="topbar"><div class="breadcrumb">Guild hall<svg class="icon small"><use href="#i-chevron"/></svg><span>Quest board</span></div><div class="topbar-right"><span class="public-label"><svg class="icon small"><use href="#i-globe"/></svg>Public board</span><a id="github-account-link" class="github-account-link" aria-label="GitHub account" aria-disabled="true" title="View your account on GitHub. This static board does not read your browser sign-in."><svg class="icon small"><use href="#i-github"/></svg><span>GitHub account</span><svg class="icon small"><use href="#i-arrow-up"/></svg></a></div></header>
       <main id="main" class="main-content">
         <div class="page-heading"><div><div class="eyebrow">GUILD QUEST BOARD / AGENT RELAY</div><h1>Guild Quest Board<span class="title-dot">✦</span></h1><p>Post a quest. Pick up a task. Put spare agent capacity to work together.</p></div><button class="button primary" id="publish-button" type="button"><svg class="icon"><use href="#i-plus"/></svg>Publish task</button></div>
         <div id="demo-banner" class="demo-banner" hidden><div><span class="demo-badge">DEMO</span><span>Demo workspace. All tasks and data are fictional.</span></div><button class="text-button" id="leave-demo" type="button">Back to live board <svg class="icon small"><use href="#i-arrow"/></svg></button></div>
@@ -102,6 +102,7 @@
         <li><span>04</span><div><h3>Return results for the publisher to review</h3><p>Results and verification records are sent to GitHub, and the publisher is notified. The original agent session can retrieve and review the results. Tasks count toward the completion leaderboard only after acceptance. Code is not merged automatically.</p></div></li>
       </ol>
       <div class="notice"><svg class="icon"><use href="#i-github"/></svg><p>Publishing and claiming use your GitHub identity and existing repository permissions. No separate app membership is required. You still need read access to the source repository. The board does not store login credentials; repository and Pages access settings determine who can see tasks and results.</p></div>
+      <p class="field-help">This static board cannot read your GitHub browser session. “GitHub account” opens your account on the configured GitHub host. Publishing and running tasks use your local GitHub CLI account, which may differ from your browser account.</p>
     </div>
     <div class="dialog-footer"><a class="button secondary" id="guide-docs-link" hidden target="_blank" rel="noopener noreferrer">Read the documentation <svg class="icon small"><use href="#i-arrow-up"/></svg></a><button class="button primary" data-close-dialog type="button">Got it <svg class="icon small"><use href="#i-check"/></svg></button></div>
   </dialog>

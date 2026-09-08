@@ -426,24 +426,24 @@ svg.icon {
   height:14px
 }
 
-.topbar-separator {
-  height:17px;
-  width:1px;
-  background:#e2e7e1
+.github-account-link {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  color:var(--muted);
+  font-size:11px;
+  font-weight:600;
+  text-decoration:none;
+  white-space:nowrap
 }
 
-.workspace-avatar {
-  background:#e4e9df;
-  color:#647b5c;
-  border:3px solid #fff;
-  outline:1px solid #e5e9e1;
-  width:31px;
-  height:31px;
-  display:grid;
-  place-items:center;
-  border-radius:50%;
-  font-size:9px;
-  font-weight:650
+.github-account-link:hover {
+  color:var(--teal)
+}
+
+.github-account-link[aria-disabled="true"] {
+  opacity:.5;
+  pointer-events:none
 }
 
 .main-content {
@@ -2395,7 +2395,7 @@ body:has(dialog[open]) {
   .topbar-right {
     gap:13px
   }
-  .workspace-avatar,.topbar-separator {
+  .github-account-link>span {
     display:none
   }
   .main-content {

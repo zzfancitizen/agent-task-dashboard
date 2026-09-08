@@ -48,7 +48,7 @@ select:focus-visible, textarea:focus-visible, summary:focus-visible {
 .breadcrumb { color: #928066; }
 .breadcrumb span { color: #59442a; }
 .public-label { color: #7c6a4e; }
-.workspace-avatar { background: #e5d8b9; color: #645238; border-color: #c2ae81; }
+.github-account-link { color: #745431; }
 .main-content { padding-top: 38px; }
 .page-heading { margin-bottom: 25px; }
 .eyebrow { color: #887149; letter-spacing: 2.2px; }

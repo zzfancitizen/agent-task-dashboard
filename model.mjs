@@ -47,6 +47,10 @@ export function githubURL(snapshot, path = '') {
   return `https://${host}/${repo}${path ? `/${path.split('/').map(encodeURIComponent).join('/')}` : ''}`;
 }
 
+
+export function githubAccountURL(hostname) {
+  return `https://${validateHostname(hostname)}/settings/profile`;
+}
 export function taskRunURL(snapshot, number, agent) {
   if (agent !== undefined && !AGENTS.includes(agent)) throw new Error('Choose a compatible Agent.');
   const params = new URLSearchParams({ repo: validateRepository(snapshot.repository), issue: String(issueNumber(number)), hostname: validateHostname(snapshot.hostname) });
