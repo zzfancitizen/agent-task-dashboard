@@ -2,6 +2,8 @@
 
 这份实现说明替代最初的独立后台设计。线上只有 GitHub：Issues 保存请求，Actions 顺序处理，`taskboard-state` 分支保存确认后的状态，`gh-pages` 分支保存公开看板。本机程序负责调用已有 CLI 和接收成果，无常驻线上服务或数据库。
 
+**日常查看全部通过 GitHub Pages 完成，不需要本地页面或 HTTP 服务。** 浏览器从同一 Pages 站点读取 `tasks.json`；运行按钮直接唤起本地 CLI，CLI 不依赖本地网站。
+
 ## 部署前提
 
 公司 GitHub 已启用 Issues、Actions 和 Pages。GitHub Enterprise Server 使用公司已有 self-hosted runner；GitHub.com 默认使用 `ubuntu-latest`。可设置仓库变量 `TASKBOARD_RUNNER` 选择公司 runner 标签。Runner 需要 Python 3.11+、GitHub CLI 和 Node.js 18+（用于前端测试）；运行 agent 的电脑还需要对应 agent CLI。
@@ -88,7 +90,9 @@ Linux 和未安装 handler 的电脑可复制看板提供的 CLI 命令。页面
 
 Actions 只处理 JSON、GitHub API 和页面构建；不会执行任务 prompt、资源中的脚本或验收命令。真正的 agent 工作消耗认领者自己的 CLI 额度。
 
-## 本地检查与预览
+## 开发时可选：本地检查与预览
+
+以下命令供开发与验收使用；正式成员直接访问 GitHub Pages，可以跳过本地预览。
 
 ```sh
 python3 -m unittest discover -s tests -v

@@ -4,6 +4,8 @@
 
 **线上只使用 GitHub：公开 Pages + Issues + Actions + Release 附件。无需额外后台服务、数据库或网页账号系统。** 支持可配置的公司内网 GitHub 域名。
 
+正式使用时，所有成员直接访问公司 GitHub Pages 地址查看任务、进度、详情和交付信息。**不需要启动本地网页或 HTTP 服务。** 本地 CLI 只负责执行 agent、上传成果和接续原会话。
+
 ## 已实现
 
 - 中文响应式看板：搜索、状态/Agent/类型筛选、任务详情、完整 prompt 复制、参考资源与交付展示。
@@ -13,14 +15,6 @@
 - `start` 管理发起会话，捕获真实 session ID，让 agent 发布时自动建立本机关联。
 - `sync` 下载结果；`sync --resume` 显式将结果送回原会话，保留失败或未知投递状态以避免重复执行。
 - macOS 一键启动入口；Linux 使用复制 CLI 命令。
-
-## 先看界面
-
-```sh
-python3 -m http.server 8080 --bind 127.0.0.1 --directory site
-```
-
-打开 [本地看板](http://127.0.0.1:8080/)，点击“先体验演示”。示例模式不会发布、认领或运行真实任务。
 
 ## 导入公司 GitHub
 
@@ -74,6 +68,16 @@ python3 -m compileall -q taskboard scripts
 ```
 
 测试使用临时 Git 仓库、模拟 GitHub 边界和模拟 provider 子进程，不消费真实模型额度。真实内网 SSO、公司 runner/Pages 配置、两名成员的真实 CLI 计费归属需在公司环境联调。
+
+## 开发时可选：本地界面预览
+
+此步骤仅用于开发和验收页面，不是正式使用的前提。部署后直接访问 GitHub Pages 即可。
+
+```sh
+python3 -m http.server 8080 --bind 127.0.0.1 --directory site
+```
+
+打开 [本地开发预览](http://127.0.0.1:8080/)，点击“先体验演示”。示例模式不会发布、认领或运行真实任务。
 
 ## 文件入口
 
