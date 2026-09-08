@@ -78,7 +78,7 @@ test('stored ZIP preserves CRC32, UTF-8, fixed dates and regular executable file
   assert.equal(decoder.decode(files.get('说明.txt').data), '123456789');
   assert.deepEqual(storedZip(entries), bytes, 'same input must make deterministic archive bytes');
   for (const name of ['../escape', '/absolute', 'a\\b', 'a/../b', '.git/config']) assert.throws(() => storedZip([{ name, data: 'x' }]));
-  assert.throws(() => storedZip([{ name: 'a.txt', data: '' }, { name: 'A.txt', data: '' }]), /重复/);
+  assert.throws(() => storedZip([{ name: 'a.txt', data: '' }, { name: 'A.txt', data: '' }]), /duplicate/i);
 });
 
 test('download descriptor pins the confirmed issue revision and digest without executable task text', () => {
@@ -123,11 +123,11 @@ test('publisher setup uses a board-only descriptor and a separate package action
 });
 
 test('bad runtime digest, length, manifest URL and missing starter prevent any package result', async () => {
-  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'taskboard-runtime.zip': encoder.encode('tampered') })), /大小|SHA-256/);
+  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'taskboard-runtime.zip': encoder.encode('tampered') })), /size|SHA-256/);
   await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'runtime.json': JSON.stringify({ schema_version: 1, file: 'taskboard-runtime.zip', sha256: 'b'.repeat(64), size: runtime.length }) })), /SHA-256/);
-  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'runtime.json': JSON.stringify({ schema_version: 1, file: 'https://evil.example/runtime.zip', sha256: runtimeHash, size: runtime.length }) })), /清单/);
-  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'Start-Taskboard.sh': undefined })), /下载资源|HTTP 404/);
-  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'bootstrap.py': 'x'.repeat(300000) })), /过大|大小/);
+  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'runtime.json': JSON.stringify({ schema_version: 1, file: 'https://evil.example/runtime.zip', sha256: runtimeHash, size: runtime.length }) })), /manifest/);
+  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'Start-Taskboard.sh': undefined })), /Download assets|HTTP 404/);
+  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'bootstrap.py': 'x'.repeat(300000) })), /too large|size/);
 });
 
 test('demo, unavailable board and stale task downloads fail before fetching assets', async () => {
@@ -142,7 +142,7 @@ test('copyable publisher instructions bind the real board and require affirmativ
   const instruction = publisherInstructions(snapshot, 'https://pages.acme.internal/guild/board/');
   assert.equal(instruction.includes('https://github.acme.internal/acme/task-board'), true);
   assert.equal(instruction.includes('https://pages.acme.internal/guild/board/downloads/'), true);
-  assert.match(instruction, /明确同意/);
-  assert.match(instruction, /完整上下文/);
+  assert.match(instruction, /explicit approval/);
+  assert.match(instruction, /complete context/);
   assert.throws(() => publisherInstructions({ ...snapshot, demo: true }, 'https://pages.acme.internal/guild/board/'));
 });

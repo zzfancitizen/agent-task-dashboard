@@ -85,10 +85,10 @@ test('exports immutable v1 task with argv arrays, bounded execution, and normali
 
 test('task export rejects missing authority and shell-string commands with useful errors', () => {
   for (const [key, value, message] of [
-    ['base_commit', 'HEAD', /40/], ['write_paths', '../private', /路径/], ['repository', 'https://attacker.example/a/b', /仓库/],
-    ['agents', [], /Agent/], ['commands', 'python3 -m unittest', /JSON/], ['commands', '["sh", 1]', /字符串/],
-    ['timeout_minutes', '241', /240/], ['max_attempts', '6', /5/], ['title', '', /标题/],
-    ['required_outputs', '../secret', /路径/], ['prompt', 'x'.repeat(50000), /48/],
+    ['base_commit', 'HEAD', /40/], ['write_paths', '../private', /path/i], ['repository', 'https://attacker.example/a/b', /repository/i],
+    ['agents', [], /Agent/], ['commands', 'python3 -m unittest', /JSON/], ['commands', '["sh", 1]', /strings/],
+    ['timeout_minutes', '241', /240/], ['max_attempts', '6', /5/], ['title', '', /title/],
+    ['required_outputs', '../secret', /path/i], ['prompt', 'x'.repeat(50000), /48/],
   ]) assert.throws(() => buildTaskExport({ ...form, [key]: value }, options), message);
 });
 
@@ -96,16 +96,16 @@ test('task export validates pinned resource hashes and path traversal', () => {
   const resource = { type: 'git_file', repository: form.repository, commit: 'b'.repeat(40), path: 'docs/rules.md', destination: 'resources/rules.md', sha256: 'c'.repeat(64) };
   assert.deepEqual(buildTaskExport({ ...form, resources: JSON.stringify([resource]) }, options).resources, [resource]);
   assert.throws(() => buildTaskExport({ ...form, resources: JSON.stringify([{ ...resource, sha256: 'wrong' }]) }, options), /SHA-256/);
-  assert.throws(() => buildTaskExport({ ...form, resources: JSON.stringify([{ ...resource, destination: '../secret' }]) }, options), /路径/);
+  assert.throws(() => buildTaskExport({ ...form, resources: JSON.stringify([{ ...resource, destination: '../secret' }]) }, options), /path/i);
 });
 
 test('task export rejects Git metadata, duplicate destinations, and invalid protocol strings', () => {
   const resource = { type: 'git_file', repository: form.repository, commit: 'b'.repeat(40), path: 'docs/rules.md', destination: 'resources/rules.md', sha256: 'c'.repeat(64) };
-  assert.throws(() => buildTaskExport({ ...form, write_paths: '.git/hooks/' }, options), /路径/);
-  assert.throws(() => buildTaskExport({ ...form, required_outputs: 'nested/.GIT/config' }, options), /路径/);
-  assert.throws(() => buildTaskExport({ ...form, resources: JSON.stringify([resource, resource]) }, options), /重复/);
-  assert.throws(() => buildTaskExport({ ...form, commands: '["python3", "   "]' }, options), /字符串/);
-  assert.throws(() => buildTaskExport({ ...form, review_notes: 'hello\0world' }, options), /空字符/);
+  assert.throws(() => buildTaskExport({ ...form, write_paths: '.git/hooks/' }, options), /path/i);
+  assert.throws(() => buildTaskExport({ ...form, required_outputs: 'nested/.GIT/config' }, options), /path/i);
+  assert.throws(() => buildTaskExport({ ...form, resources: JSON.stringify([resource, resource]) }, options), /duplicate/);
+  assert.throws(() => buildTaskExport({ ...form, commands: '["python3", "   "]' }, options), /strings/);
+  assert.throws(() => buildTaskExport({ ...form, review_notes: 'hello\0world' }, options), /null characters/);
 });
 
 test('launcher URL carries the chosen compatible provider and rejects unknown providers', () => {
@@ -159,7 +159,7 @@ test('rankings show ten contributors with stable alphabetical order for equal co
 });
 
 test('execution duration shows sub-minute timeouts without rounding them to zero', () => {
-  for (const [seconds, label] of [[10, '10 秒'], [59, '59 秒'], [60, '1 分钟'], [90, '1 分 30 秒'], [1800, '30 分钟'], [0, '未指定'], [undefined, '未指定']]) {
+  for (const [seconds, label] of [[10, '10 sec'], [59, '59 sec'], [60, '1 min'], [90, '1 min 30 sec'], [1800, '30 min'], [0, 'Not specified'], [undefined, 'Not specified']]) {
     assert.equal(executionDuration(seconds), label);
   }
 });

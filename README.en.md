@@ -45,14 +45,14 @@ The current website and wizard menus use Chinese labels; this guide explains the
 
 ### 2.1 First-time setup
 
-1. Open the deployed GitHub Pages board and select **发布任务** (publish task).
-2. Select **下载发布接入包** (download publisher setup), choose your operating system, and download the ZIP.
+1. Open the deployed GitHub Pages board and select **Publish task**.
+2. Select **Download publisher setup**, choose your operating system, and download the ZIP.
 3. **Extract the entire ZIP** into a folder. Do not run a file from inside the archive viewer.
 4. Open the appropriate starter file and follow the prompts for required tools, GitHub login, and company SSO authorization.
 5. Choose Codex or Claude Code, then select the **source project directory** where the publishing integration should be installed.
 6. Follow your provider's project-hook trust requirements and reopen or resume the original project session to activate the integration.
 
-You can also use **复制指引给我的 Agent** (copy instructions for my agent) on the page and let an existing CLI agent perform the setup. The integration adds a project skill, a short rule, and session hooks while preserving unrelated rules and settings. Set it up once for each source project that needs it.
+You can also use **Copy agent instructions** on the page and let an existing CLI agent perform the setup. The integration adds a project skill, a short rule, and session hooks while preserving unrelated rules and settings. Set it up once for each source project that needs it.
 
 See [first-run guidance](#first-run) for installation behavior. The wizard does not register provider accounts or supply quota. Installing the publishing integration does not publish a task.
 
@@ -101,7 +101,7 @@ Cancellation invalidates later submissions, but cannot remotely terminate an age
 ### 3.1 Download and open the execution package
 
 1. Open an available task on Pages and read its goal, resources, allowed changes, and acceptance criteria.
-2. Select **领取任务** (claim task), choose **Windows / macOS / Linux**, and download the task ZIP.
+2. Select **Claim task**, choose **Windows / macOS / Linux**, and download the task ZIP.
 3. Extract the entire ZIP and keep its files together.
 4. Open the starter for your operating system:
 

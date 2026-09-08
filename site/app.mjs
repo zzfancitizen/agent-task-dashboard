@@ -74,22 +74,22 @@ function showToast(message, error = false) {
   toast.hidden = false;
   toastTimer = setTimeout(() => { toast.hidden = true; }, error ? 7000 : 3200);
 }
-async function copyText(text, success = '已复制到剪贴板') {
+async function copyText(text, success = 'Copied to clipboard') {
   try {
-    if (!navigator.clipboard?.writeText) throw new Error('当前浏览器不支持剪贴板');
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard access is unavailable in this browser');
     await navigator.clipboard.writeText(text);
     showToast(success);
   } catch {
     const dialog = element('dialog', 'dialog copy-dialog');
     dialog.setAttribute('aria-labelledby', 'manual-copy-title');
     const header = element('div', 'dialog-header');
-    const title = element('h2', '', '手动复制');
+    const title = element('h2', '', 'Copy manually');
     title.id = 'manual-copy-title';
     const close = button('', 'icon-button', () => dialog.close(), 'close');
-    close.setAttribute('aria-label', '关闭手动复制');
+    close.setAttribute('aria-label', 'Close manual copy');
     header.append(title, close);
     const body = element('div', 'dialog-body');
-    const field = element('label', 'field', '浏览器未允许自动复制，请选中以下内容复制。');
+    const field = element('label', 'field', 'Automatic copying is unavailable. Select and copy the text below.');
     const input = element('textarea', 'mono');
     input.value = text;
     input.readOnly = true;
@@ -125,37 +125,37 @@ function renderCounts() {
 }
 function renderLeaderboards(state = '') {
   const rankings = taskLeaderboards(snapshot);
-  $('#ranking-scope').textContent = state === 'loading' ? '正在读取已确认的任务记录…' : state === 'error' ? '快照暂不可用' : snapshot.demo ? '演示任务不计入真实排行' : '当前确认快照 · 各显示前 10 名 · 不受列表筛选影响';
-  for (const [kind, label] of [['published', '发布'], ['completed', '完成']]) {
+  $('#ranking-scope').textContent = state === 'loading' ? 'Loading confirmed tasks…' : state === 'error' ? 'Task data is unavailable' : snapshot.demo ? 'Demo tasks are excluded from rankings' : 'Confirmed tasks · Top 10 in each list · Independent of filters';
+  for (const [kind, label] of [['published', 'published'], ['completed', 'completed']]) {
     const list = $(`#leaderboard-${kind}`);
     const entries = state ? [] : rankings[kind];
     if (!entries.length) {
-      list.replaceChildren(element('li', 'ranking-empty', state === 'loading' ? '正在读取…' : state === 'error' ? '暂时无法确认排行，请稍后刷新。' : snapshot.demo ? '返回真实看板后查看公会贡献。' : kind === 'published' ? '还没有已确认的发布记录。' : '还没有已验收的完成记录。'));
+      list.replaceChildren(element('li', 'ranking-empty', state === 'loading' ? 'Loading…' : state === 'error' ? 'Rankings are unavailable. Please refresh later.' : snapshot.demo ? 'Return to the live board to see contributions.' : kind === 'published' ? 'No confirmed publications yet.' : 'No accepted completions yet.'));
       continue;
     }
     list.replaceChildren(...entries.map((entry, index) => {
       const row = element('li', 'ranking-row');
       const position = element('span', 'ranking-position', String(index + 1).padStart(2, '0'));
-      position.setAttribute('aria-label', `第 ${index + 1} 名`);
-      row.append(position, element('span', 'ranking-actor', `@${entry.actor}`), element('strong', 'ranking-count', `${entry.count} 项`));
-      row.setAttribute('aria-label', `第 ${index + 1} 名，${entry.actor}，${label} ${entry.count} 项`);
+      position.setAttribute('aria-label', `Rank ${index + 1}`);
+      row.append(position, element('span', 'ranking-actor', `@${entry.actor}`), element('strong', 'ranking-count', `${entry.count}`));
+      row.setAttribute('aria-label', `Rank ${index + 1}, ${entry.actor}, ${label} ${entry.count}`);
       return row;
     }));
   }
 }
 function renderWorkspace() {
   $('#demo-banner').hidden = !snapshot.demo;
-  $('#workspace-repo').textContent = snapshot.demo ? '演示工作空间 · 虚构数据' : snapshot.repository || '等待连接仓库';
-  $('#workspace-repo').title = snapshot.repository || '尚未配置 GitHub 任务仓库';
+  $('#workspace-repo').textContent = snapshot.demo ? 'Demo workspace · Fictional tasks' : snapshot.repository || 'Repository not connected';
+  $('#workspace-repo').title = snapshot.repository || 'No GitHub task repository configured';
   const repoURL = snapshot.repository && !snapshot.demo ? githubURL(snapshot) : null;
   setExternalLink($('#nav-repository'), repoURL);
   const docs = $('#guide-docs-link');
   docs.hidden = !repoURL;
-  if (repoURL) setExternalLink(docs, repoURL);
-  $('#try-demo-footer').textContent = snapshot.demo ? '返回真实工作空间' : '体验演示工作空间';
+  if (repoURL) setExternalLink(docs, githubURL(snapshot, 'blob/HEAD/README.en.md'));
+  $('#try-demo-footer').textContent = snapshot.demo ? 'Return to live board' : 'Explore the demo';
   $('#try-demo-footer').append(icon('arrow', true));
-  $('#sync-status').textContent = snapshot.demo ? '演示快照 · 非真实执行记录' : snapshot.repository ? `快照同步于 ${relativeTime(snapshot.generated_at)}` : '尚未连接任务仓库';
-  $('#sync-status').title = snapshot.generated_at || '暂无同步记录';
+  $('#sync-status').textContent = snapshot.demo ? 'Demo data · No real executions' : snapshot.repository ? `Synced ${relativeTime(snapshot.generated_at)}` : 'No task repository connected';
+  $('#sync-status').title = snapshot.generated_at || 'No sync recorded';
   $('#sync-dot').classList.toggle('muted-dot', !snapshot.repository);
   renderPublisher();
 }
@@ -170,18 +170,18 @@ function renderTask(task) {
   const docket = element('div', 'quest-docket');
   const size = ['S', 'M', 'L'].includes(spec.size) ? spec.size : 'M';
   const rank = element('span', 'quest-rank', { S: '★☆☆', M: '★★☆', L: '★★★' }[size]);
-  rank.setAttribute('aria-label', `任务规模 ${size}`);
-  rank.title = `星级对应任务规模 ${size}`;
-  docket.append(element('span', 'quest-number', `委托书 / No. ${String(task.number).padStart(3, '0')}`), rank);
+  rank.setAttribute('aria-label', `Task size ${size}`);
+  rank.title = `Stars indicate task size ${size}`;
+  docket.append(element('span', 'quest-number', `Quest / No. ${String(task.number).padStart(3, '0')}`), rank);
   const categoryIcon = element('span', `task-category-icon ${category}`);
   categoryIcon.append(icon(category === 'docs' ? 'file' : category === 'research' ? 'research' : 'code'));
   const content = element('div', 'task-content');
   const titleLine = element('div', 'task-title-line');
   const title = button(spec.title, 'task-title', () => showTask(task));
-  title.setAttribute('aria-label', `查看任务 #${task.number}：${spec.title}`);
+  title.setAttribute('aria-label', `View task #${task.number}: ${spec.title}`);
   titleLine.append(title);
-  if (spec.priority === 'high') titleLine.append(element('span', 'priority-chip', '优先处理'));
-  const description = element('p', 'task-description', spec.prompt.replace(/^【虚构演示任务】\s*/, ''));
+  if (spec.priority === 'high') titleLine.append(element('span', 'priority-chip', 'High priority'));
+  const description = element('p', 'task-description', spec.prompt);
   const tags = element('div', 'task-tags');
   tags.append(element('span', 'tag', CATEGORIES[category]), element('span', 'tag size', ['S', 'M', 'L'].includes(spec.size) ? spec.size : 'M'));
   for (const agent of spec.execution.compatible_agents) tags.append(agentChip(agent));
@@ -193,10 +193,10 @@ function renderTask(task) {
   const actions = element('div', 'task-actions');
   actions.append(statusBadge(task.status));
   if (task.status === 'open') {
-    const view = button('查看任务', 'button ghost compact', () => showTask(task), 'arrow');
+    const view = button('View task', 'button ghost compact', () => showTask(task), 'arrow');
     actions.append(view);
   } else {
-    const view = button(task.status === 'submitted' || task.status === 'accepted' ? '查看交付' : '查看详情', 'row-link', () => showTask(task));
+    const view = button(task.status === 'submitted' || task.status === 'accepted' ? 'View result' : 'View details', 'row-link', () => showTask(task));
     view.append(icon('arrow', true));
     actions.append(view);
   }
@@ -214,19 +214,19 @@ function renderEmpty() {
   const filtered = snapshot.tasks.length > 0;
   container.append(emptyArt(filtered ? 'search' : 'box'));
   if (filtered) {
-    container.append(element('h2', '', '还没有符合条件的任务'), element('p', '', '换个关键词，或调整筛选条件，看看其他正在等待接力的任务。'));
+    container.append(element('h2', '', 'No matching tasks'), element('p', '', 'Try another keyword or adjust the filters to find a task.'));
     const actions = element('div', 'empty-actions');
-    actions.append(button('清除全部筛选', 'button secondary', resetFilters, 'refresh'));
+    actions.append(button('Clear filters', 'button secondary', resetFilters, 'refresh'));
     container.append(actions);
   } else {
-    container.append(element('h2', '', snapshot.repository ? '下一次接力，从这里开始。' : '好任务，值得一次好接力。'));
-    container.append(element('p', '', snapshot.repository ? '仓库已连接，当前还没有任务。让现有 Agent 整理上下文，在你确认后发布第一份委托。' : '当前看板尚未连接任务仓库。请联系维护者完成 GitHub Actions 与 Pages 配置；也可以先浏览演示。'));
+    container.append(element('h2', '', snapshot.repository ? 'The next quest starts here.' : 'Good work deserves a helping hand.'));
+    container.append(element('p', '', snapshot.repository ? 'The repository is connected. Ask your agent to prepare the first task, then approve it for publication.' : 'This board is not connected yet. Ask the maintainer to configure GitHub Actions and Pages, or explore the demo.'));
     const actions = element('div', 'empty-actions');
-    actions.append(button(snapshot.repository ? '让 Agent 发布委托' : '了解使用方式', 'button primary', snapshot.repository ? openPublish : () => openDialog($('#guide-dialog')), snapshot.repository ? 'plus' : 'book'));
-    actions.append(button('先体验演示', 'button secondary', () => loadSnapshot('demo'), 'play'));
+    actions.append(button(snapshot.repository ? 'Publish with your agent' : 'How it works', 'button primary', snapshot.repository ? openPublish : () => openDialog($('#guide-dialog')), snapshot.repository ? 'plus' : 'book'));
+    actions.append(button('Explore the demo', 'button secondary', () => loadSnapshot('demo'), 'play'));
     container.append(actions);
     const steps = element('div', 'onboarding-steps');
-    for (const [index, label] of ['Agent 整理', '确认发布', '下载执行', '检查交付'].entries()) {
+    for (const [index, label] of ['Agent prepares', 'Approve publication', 'Download and run', 'Review results'].entries()) {
       if (index) steps.append(icon('arrow', true));
       const step = element('span');
       step.append(element('b', '', String(index + 1)), document.createTextNode(label));
@@ -244,7 +244,7 @@ function renderTasks() {
   const list = $('#task-list');
   list.setAttribute('aria-busy', 'false');
   list.replaceChildren(...(tasks.length ? tasks.map(renderTask) : [renderEmpty()]));
-  $('#result-count').textContent = `共 ${snapshot.tasks.length} 项任务${tasks.length !== snapshot.tasks.length ? ` · 显示 ${tasks.length} 项` : ''}`;
+  $('#result-count').textContent = `${snapshot.tasks.length} ${snapshot.tasks.length === 1 ? 'task' : 'tasks'}${tasks.length !== snapshot.tasks.length ? ` · Showing ${tasks.length}` : ''}`;
 }
 function renderError(error) {
   for (const name of ['total', 'open', 'active', 'submitted']) $(`#count-${name}`).textContent = '—';
@@ -253,13 +253,13 @@ function renderError(error) {
   $('#task-list').setAttribute('aria-busy', 'false');
   const panel = element('div', 'empty-state error');
   panel.setAttribute('role', 'alert');
-  panel.append(emptyArt('info'), element('h2', '', '暂时无法读取任务'), element('p', '', '请检查任务快照是否已部署，或稍后重试。现有 GitHub 任务不会受到影响。'));
+  panel.append(emptyArt('info'), element('h2', '', 'Tasks are unavailable'), element('p', '', 'Please retry later, or ask the maintainer to check the deployment. Existing tasks remain available on GitHub.'));
   const actions = element('div', 'empty-actions');
-  actions.append(button('重新读取', 'button primary', () => loadSnapshot(currentMode), 'refresh'), button('浏览演示', 'button secondary', () => loadSnapshot('demo'), 'play'));
+  actions.append(button('Retry', 'button primary', () => loadSnapshot(currentMode), 'refresh'), button('Explore demo', 'button secondary', () => loadSnapshot('demo'), 'play'));
   panel.append(actions, element('span', 'empty-footnote', error.message));
   $('#task-list').replaceChildren(panel);
-  $('#result-count').textContent = '读取失败';
-  $('#sync-status').textContent = '任务快照暂不可用';
+  $('#result-count').textContent = 'Unable to load';
+  $('#sync-status').textContent = 'Task data is unavailable';
   renderLeaderboards('error');
 }
 async function loadSnapshot(mode = currentMode) {
@@ -271,19 +271,19 @@ async function loadSnapshot(mode = currentMode) {
   $('#task-list').setAttribute('aria-busy', 'true');
   const state = element('div', 'loading-state');
   state.setAttribute('role', 'status');
-  state.append(element('span', 'loader'), document.createTextNode('正在读取 GitHub 任务快照…'));
+  state.append(element('span', 'loader'), document.createTextNode('Loading tasks from GitHub…'));
   $('#task-list').replaceChildren(state);
-  $('#result-count').textContent = '正在读取任务…';
-  $('#sync-status').textContent = '读取快照中';
+  $('#result-count').textContent = 'Loading tasks…';
+  $('#sync-status').textContent = 'Loading task data';
   renderLeaderboards('loading');
   try {
     const response = await fetch(mode === 'demo' ? './demo-tasks.json' : './tasks.json', { cache: 'no-store', signal: AbortSignal.timeout(15000) });
-    if (!response.ok) throw new Error(`任务快照返回 HTTP ${response.status}`);
+    if (!response.ok) throw new Error(`Task data returned HTTP ${response.status}`);
     const raw = await response.text();
-    if (raw.length > 5 * 1024 * 1024) throw new Error('快照文件超过 5 MB，无法读取。');
+    if (raw.length > 5 * 1024 * 1024) throw new Error('Task data exceeds the 5 MB limit.');
     const data = normalizeSnapshot(JSON.parse(raw));
-    if (mode === 'demo' && !data.demo) throw new Error('演示快照缺少 demo 标记。');
-    if (mode === 'live' && data.demo) throw new Error('真实任务快照不能包含演示数据。');
+    if (mode === 'demo' && !data.demo) throw new Error('Demo data is missing its demo flag.');
+    if (mode === 'live' && data.demo) throw new Error('The live board cannot contain demo data.');
     if (version !== loadVersion) return;
     snapshot = data;
     resetFilters(false);
@@ -341,35 +341,35 @@ function outputChips(values) {
   return list;
 }
 function renderResources(resources) {
-  if (!resources?.length) return paragraph('此任务没有附加参考资源。', 'detail-empty');
+  if (!resources?.length) return paragraph('No additional resources are attached to this task.', 'detail-empty');
   const list = element('ul', 'resource-list');
   for (const resource of resources) {
     const item = element('li');
     const title = element('div', 'resource-title');
     const url = resourceURL(resource, snapshot.hostname);
     title.append(icon('file', true), url && !snapshot.demo ? link(resource.path, url) : element('span', '', resource.path));
-    item.append(title, paragraph(`固定提交 ${String(resource.commit || '').slice(0, 12)} · 保存至 ${resource.destination || '未指定'}`, 'resource-meta'));
-    item.append(paragraph(`SHA-256 ${resource.sha256 || '未指定'}`, 'resource-meta'));
+    item.append(title, paragraph(`Pinned commit ${String(resource.commit || '').slice(0, 12)} · Saved to ${resource.destination || 'Not specified'}`, 'resource-meta'));
+    item.append(paragraph(`SHA-256 ${resource.sha256 || 'Not specified'}`, 'resource-meta'));
     list.append(item);
   }
   return list;
 }
 function renderResult(result) {
-  if (!result?.manifest) return paragraph('结果尚未提交。执行完成后，这里会显示摘要、验证记录与交付文件。', 'detail-empty');
+  if (!result?.manifest) return paragraph('No result has been submitted yet. The summary, verification records, and files will appear here after execution.', 'detail-empty');
   const manifest = result.manifest;
   const card = element('div', 'result-card');
-  card.append(paragraph(manifest.summary || '暂无结果摘要'));
+  card.append(paragraph(manifest.summary || 'No result summary available'));
   for (const artifact of manifest.artifacts || []) {
     const url = safeHTTPS(artifact.uri);
     if (url && !snapshot.demo) card.append(link(artifact.name, url, 'artifact-link', 'arrow-up'));
     else {
       const item = element('div', 'artifact-link');
-      item.append(icon('file', true), document.createTextNode(`${artifact.name}${snapshot.demo ? ' · 演示文件' : ' · 链接不可用'}`));
+      item.append(icon('file', true), document.createTextNode(`${artifact.name}${snapshot.demo ? ' · Demo file' : ' · Link unavailable'}`));
       card.append(item);
     }
   }
   if (manifest.verification?.length) {
-    card.append(paragraph('验证记录', 'small-label'));
+    card.append(paragraph('Verification records', 'small-label'));
     for (const check of manifest.verification) {
       const row = element('div', `verification-row${check.exit_code === 0 ? '' : ' failed'}`);
       row.append(icon(check.exit_code === 0 ? 'circle-check' : 'info', true), element('code', '', `${JSON.stringify(check.argv)} · exit ${check.exit_code}`));
@@ -377,7 +377,7 @@ function renderResult(result) {
       if (check.evidence) card.append(paragraph(check.evidence, 'resource-meta'));
     }
   }
-  for (const [key, label] of [['assumptions', '执行假设'], ['unresolved', '未解决事项']]) {
+  for (const [key, label] of [['assumptions', 'Assumptions'], ['unresolved', 'Unresolved items']]) {
     if (manifest[key]?.length) {
       card.append(paragraph(label, 'small-label'));
       for (const item of manifest[key]) card.append(paragraph(`• ${item}`));
@@ -390,29 +390,29 @@ function showTask(task) {
   const header = element('div', 'dialog-header');
   const heading = element('div');
   const headerMeta = element('div', 'detail-header-meta');
-  headerMeta.append(element('span', '', `${snapshot.demo ? '演示任务' : '任务'} #${task.number}`), statusBadge(task.status));
-  if (snapshot.demo) headerMeta.append(element('span', 'demo-badge', '虚构数据'));
+  headerMeta.append(element('span', '', `${snapshot.demo ? 'Demo task' : 'Task'} #${task.number}`), statusBadge(task.status));
+  if (snapshot.demo) headerMeta.append(element('span', 'demo-badge', 'Fictional data'));
   const title = element('h2', '', spec.title);
   title.id = 'detail-title';
   const subtitle = element('div', 'detail-subtitle');
-  subtitle.append(element('span', 'author-avatar', String(task.author || 'A').slice(0, 2).toUpperCase()), element('span', '', `${task.author || '未知作者'} 发布`), element('span', 'meta-dot', '·'), element('span', '', `修订 ${spec.revision || 1}`), element('span', 'meta-dot', '·'), element('span', '', relativeTime(task.updated_at || task.created_at)));
+  subtitle.append(element('span', 'author-avatar', String(task.author || 'A').slice(0, 2).toUpperCase()), element('span', '', `Published by ${task.author || 'Unknown author'}`), element('span', 'meta-dot', '·'), element('span', '', `Revision ${spec.revision || 1}`), element('span', 'meta-dot', '·'), element('span', '', relativeTime(task.updated_at || task.created_at)));
   heading.append(headerMeta, title, subtitle);
   const close = button('', 'icon-button', () => closeDialog($('#detail-dialog')), 'close');
-  close.setAttribute('aria-label', '关闭任务详情');
+  close.setAttribute('aria-label', 'Close task details');
   header.append(heading, close);
   const body = element('div', 'dialog-body detail-layout');
   const main = element('div');
-  main.append(section('任务说明', paragraph(spec.prompt, 'prompt-text'), button('复制提示词', 'text-button', () => copyText(spec.prompt, '提示词已复制'), 'copy')));
-  if (spec.delegation_reason) main.append(section('委派原因', paragraph(spec.delegation_reason)));
-  main.append(section('参考资源', renderResources(spec.resources)));
+  main.append(section('Task prompt', paragraph(spec.prompt, 'prompt-text'), button('Copy prompt', 'text-button', () => copyText(spec.prompt, 'Prompt copied'), 'copy')));
+  if (spec.delegation_reason) main.append(section('Why delegate', paragraph(spec.delegation_reason)));
+  main.append(section('Resources', renderResources(spec.resources)));
   const acceptance = element('div');
-  acceptance.append(paragraph('验收命令', 'small-label'));
+  acceptance.append(paragraph('Verification commands', 'small-label'));
   if (spec.acceptance?.commands?.length) {
     for (const command of spec.acceptance.commands) acceptance.append(element('pre', 'command-block', JSON.stringify(command)));
-  } else acceptance.append(paragraph('未指定自动验收命令。', 'detail-empty'));
-  acceptance.append(paragraph('必需交付', 'small-label'), outputChips(spec.acceptance?.required_outputs));
-  if (spec.acceptance?.review_notes) acceptance.append(paragraph('验收备注', 'small-label'), paragraph(spec.acceptance.review_notes));
-  main.append(section('验收标准', acceptance), section('执行结果', renderResult(task.result)));
+  } else acceptance.append(paragraph('No automated acceptance checks are specified.', 'detail-empty'));
+  acceptance.append(paragraph('Required outputs', 'small-label'), outputChips(spec.acceptance?.required_outputs));
+  if (spec.acceptance?.review_notes) acceptance.append(paragraph('Review notes', 'small-label'), paragraph(spec.acceptance.review_notes));
+  main.append(section('Acceptance criteria', acceptance), section('Result', renderResult(task.result)));
   const side = element('aside', 'detail-side');
   function sideItem(label, value) {
     const block = element('div');
@@ -424,40 +424,40 @@ function showTask(task) {
   }
   const agents = element('div');
   spec.execution.compatible_agents.forEach(agent => agents.append(agentChip(agent)));
-  sideItem('兼容 Agent', agents);
-  sideItem('任务类型 / 规模', `${CATEGORIES[spec.category] || '代码'} / ${spec.size || 'M'}`);
-  sideItem('执行时限', executionDuration(spec.execution.timeout_seconds));
-  sideItem('尝试次数', `${task.attempt_count || 0} / ${spec.execution.max_attempts || 1}`);
+  sideItem('Compatible agents', agents);
+  sideItem('Category / Size', `${CATEGORIES[spec.category] || 'Code'} / ${spec.size || 'M'}`);
+  sideItem('Time limit', executionDuration(spec.execution.timeout_seconds));
+  sideItem('Attempts', `${task.attempt_count || 0} / ${spec.execution.max_attempts || 1}`);
   const source = safeHTTPS(spec.source?.repository);
-  sideItem('源代码仓库', source && !snapshot.demo && new URL(source).hostname === snapshot.hostname ? link(source.replace(`https://${snapshot.hostname}/`, ''), source, '', 'arrow-up') : String(spec.source?.repository || '未指定').replace(/^https?:\/\//, ''));
-  sideItem('基准提交', element('code', '', spec.source?.base_commit || '未指定'));
-  sideItem('允许修改', outputChips(spec.source?.write_paths));
-  if (task.attempt?.actor) sideItem('当前执行者', task.attempt.actor);
-  if (task.attempt?.expires_at) sideItem('领取有效期至', new Date(task.attempt.expires_at * 1000).toLocaleString('zh-CN', { hour12: false }));
+  sideItem('Source repository', source && !snapshot.demo && new URL(source).hostname === snapshot.hostname ? link(source.replace(`https://${snapshot.hostname}/`, ''), source, '', 'arrow-up') : String(spec.source?.repository || 'Not specified').replace(/^https?:\/\//, ''));
+  sideItem('Base commit', element('code', '', spec.source?.base_commit || 'Not specified'));
+  sideItem('Allowed changes', outputChips(spec.source?.write_paths));
+  if (task.attempt?.actor) sideItem('Current executor', task.attempt.actor);
+  if (task.attempt?.expires_at) sideItem('Claim expires', new Date(task.attempt.expires_at * 1000).toLocaleString('en-US', { hour12: false }));
   body.append(main, side);
   const advanced = element('details', 'detail-advanced');
-  advanced.append(element('summary', '', '高级用法 · 已配置 CLI？复制运行命令'));
+  advanced.append(element('summary', '', 'Advanced · Copy a command for an existing CLI setup'));
   const copyGroup = element('div', 'detail-footer-copy');
   const agentSelect = element('select');
-  agentSelect.setAttribute('aria-label', '选择本地执行 Agent');
+  agentSelect.setAttribute('aria-label', 'Select a local agent');
   for (const agent of spec.execution.compatible_agents) {
     const option = element('option', '', agent === 'codex' ? 'Codex' : 'Claude Code');
     option.value = agent;
     agentSelect.append(option);
   }
-  const copyCommand = button('复制 CLI', 'button secondary', () => copyText(taskCommand(snapshot, task.number, agentSelect.value), '运行命令已复制'), 'terminal');
+  const copyCommand = button('Copy CLI command', 'button secondary', () => copyText(taskCommand(snapshot, task.number, agentSelect.value), 'Run command copied'), 'terminal');
   copyCommand.disabled = snapshot.demo;
-  if (snapshot.demo) copyCommand.title = '演示任务不可执行';
+  if (snapshot.demo) copyCommand.title = 'Demo tasks cannot be run';
   copyGroup.append(agentSelect, copyCommand);
   advanced.append(copyGroup);
   main.append(advanced);
   const footer = element('div', 'dialog-footer');
   if (!snapshot.demo) footer.append(link('GitHub', githubURL(snapshot, `issues/${task.number}`), 'button secondary', 'arrow-up'));
-  const run = button(snapshot.demo ? '演示任务不可领取' : task.status === 'open' ? '领取任务' : '当前不可领取', 'button primary', () => openDownload({ task }), 'download');
+  const run = button(snapshot.demo ? 'Demo only' : task.status === 'open' ? 'Claim task' : 'Not available to claim', 'button primary', () => openDownload({ task }), 'download');
   run.disabled = snapshot.demo || task.status !== 'open';
-  if (snapshot.demo) run.title = '演示任务不能下载或执行';
+  if (snapshot.demo) run.title = 'Downloads and execution are disabled for demo tasks';
   footer.append(run);
-  const note = paragraph(snapshot.demo ? '此任务仅用于展示界面，下载与执行均已禁用。' : '选择系统并下载运行包 → 解压 → 双击 → 跟随首次使用引导 → 选择 Agent。GitHub 确认领取后才会执行。', 'detail-footer-note');
+  const note = paragraph(snapshot.demo ? 'This is a fictional example. Downloads and execution are disabled.' : 'Choose your OS → Download and extract → Double-click the starter → Follow setup → Choose an agent. Execution starts after GitHub confirms your claim.', 'detail-footer-note');
   $('#detail-content').replaceChildren(header, body, footer, note);
   openDialog($('#detail-dialog'));
 }
@@ -467,13 +467,13 @@ function renderPublisher() {
   $('#copy-publisher-instructions').disabled = Boolean(disabled);
   $('#publisher-setup').disabled = Boolean(disabled);
   $('#publisher-unavailable').hidden = !disabled;
-  $('#publisher-unavailable').textContent = snapshot.demo ? '演示模式不提供真实发布接入。请返回真实看板后复制指引或下载安装包。' : loading ? '正在读取任务仓库，确认后即可使用发布接入。' : '任务仓库尚未连接或快照不可用。请联系维护者配置后，再接入你的 Agent。';
+  $('#publisher-unavailable').textContent = snapshot.demo ? 'Publisher setup is disabled in the demo. Return to the live board to copy instructions or download setup.' : loading ? 'Loading the repository. Publisher setup will be available shortly.' : 'The repository is not connected or task data is unavailable. Ask the maintainer to check setup before connecting your agent.';
   $('#publisher-instructions').value = disabled ? '' : publisherInstructions(snapshot, document.baseURI);
 }
 
 function openDownload({ task, action = 'run' } = {}) {
   if (loading || lastError || snapshot.demo || !snapshot.repository) {
-    showToast('请先打开已连接的真实任务看板。', true);
+    showToast('Open a connected live board first.', true);
     return;
   }
   const board = snapshot;
@@ -484,17 +484,17 @@ function openDownload({ task, action = 'run' } = {}) {
   dialog.addEventListener('close', () => { active = false; }, { once: true });
   const header = element('div', 'dialog-header');
   const heading = element('div');
-  heading.append(element('span', 'eyebrow', action === 'run' ? `QUEST #${task.number} / 准备出发` : 'PUBLISHER SETUP / 委托接入'));
-  const title = element('h2', '', action === 'run' ? '选择你的电脑系统' : '接入你正在使用的 Agent');
+  heading.append(element('span', 'eyebrow', action === 'run' ? `QUEST #${task.number} / READY TO START` : 'PUBLISHER SETUP / CONNECT YOUR AGENT'));
+  const title = element('h2', '', action === 'run' ? 'Choose your operating system' : 'Connect your existing agent');
   title.id = 'download-title';
-  heading.append(title, paragraph(action === 'run' ? '下载后按引导完成首次配置，再选择兼容 Agent 执行。' : '下载后选择项目与 Agent。现有 Agent 会在你确认提案后发布委托。'));
+  heading.append(title, paragraph(action === 'run' ? 'Download the package, follow setup, and choose a compatible agent to run the task.' : 'Choose your project and agent during setup. Your agent publishes only after you approve a proposal.'));
   const close = button('', 'icon-button', () => dialog.close(), 'close');
-  close.setAttribute('aria-label', '关闭下载');
+  close.setAttribute('aria-label', 'Close download');
   header.append(heading, close);
   const body = element('div', 'dialog-body download-body');
   const choices = element('fieldset', 'platform-choices');
-  choices.append(element('legend', '', '下载哪个系统的运行包？'));
-  const platformNote = paragraph('请选择系统。每个包都包含首次使用引导；无需手动输入初始化命令。', 'download-platform-note');
+  choices.append(element('legend', '', 'Which operating system do you use?'));
+  const platformNote = paragraph('Choose an OS. Each package includes first-run setup, with no initialization commands to type.', 'download-platform-note');
   const error = paragraph('', 'form-error');
   error.hidden = true;
   error.setAttribute('role', 'alert');
@@ -505,30 +505,30 @@ function openDownload({ task, action = 'run' } = {}) {
   success.hidden = true;
   success.setAttribute('role', 'status');
   const footer = element('div', 'dialog-footer');
-  const download = button('选择系统后下载', 'button primary', async () => {
+  const download = button('Select an OS to download', 'button primary', async () => {
     if (busy || !selectedPlatform) return;
     if (board !== snapshot || loading || lastError) {
-      error.textContent = '任务快照已更新，请关闭下载窗口并重新选择任务。';
+      error.textContent = 'Task data has changed. Close this window and select the task again.';
       error.hidden = false;
       return;
     }
     busy = true;
     error.hidden = true;
     success.hidden = true;
-    progress.textContent = '正在验证运行时完整性并准备下载…';
+    progress.textContent = 'Verifying the runtime and preparing your download…';
     progress.hidden = false;
     download.disabled = true;
     for (const input of choices.querySelectorAll('input')) input.disabled = true;
     try {
       const result = await createDownloadPackage({ snapshot: board, task, platform: selectedPlatform, action }, { pageURL: document.baseURI });
       if (!active) return;
-      if (board !== snapshot || loading || lastError) throw new Error('任务快照已更新，请关闭下载窗口后重新下载。');
+      if (board !== snapshot || loading || lastError) throw new Error('Task data has changed. Close this window and download again.');
       saveDownload(new Blob([result.bytes], { type: 'application/zip' }), result.filename);
-      success.replaceChildren(element('strong', '', '运行包已准备好'), paragraph(`请在浏览器下载列表中找到 ${result.filename}，完整解压后双击 ${DOWNLOAD_PLATFORMS[selectedPlatform].starter}。${action === 'run' ? '下载本身不会领取任务，启动后会再次核验实时状态。' : '启动后按引导为你的项目接入发布 skill。'}`));
+      success.replaceChildren(element('strong', '', 'Your package is ready'), paragraph(`Find ${result.filename} in your browser downloads. Extract all files, then double-click ${DOWNLOAD_PLATFORMS[selectedPlatform].starter}. ${action === 'run' ? 'Downloading does not claim the task. The starter checks its live status again.' : 'Follow the setup guide to connect the publishing skill to your project.'}`));
       success.hidden = false;
     } catch (issue) {
       if (!active) return;
-      error.textContent = issue.message || '下载失败，请检查网络后重试。';
+      error.textContent = issue.message || 'Download failed. Check your connection and retry.';
       error.hidden = false;
     } finally {
       busy = false;
@@ -550,7 +550,7 @@ function openDownload({ task, action = 'run' } = {}) {
     radio.addEventListener('change', () => {
       selectedPlatform = value;
       platformNote.textContent = platform.note;
-      download.replaceChildren(icon('download'), document.createTextNode(`下载 ${platform.label} ${action === 'run' ? '任务包' : '接入包'}`));
+      download.replaceChildren(icon('download'), document.createTextNode(`Download for ${platform.label}`));
       download.disabled = busy;
       success.hidden = true;
       error.hidden = true;
@@ -560,17 +560,17 @@ function openDownload({ task, action = 'run' } = {}) {
   }
   const steps = element('ol', 'download-steps');
   for (const [headingText, description] of [
-    ['完整解压', '把 ZIP 内的所有文件解压到同一个文件夹。'],
-    ['双击启动', '打开所选系统的 Start-Taskboard 文件。'],
-    ['跟随首次引导', '缺少工具时查看官方安装指引，并完成 GitHub 与 Agent 登录。'],
-    ['选择 Agent', action === 'run' ? '确认任务后执行；完成时自动回传交付，并通知发布者验收。' : '选择当前项目与 Agent，在原会话中整理提案、确认发布。'],
+    ['Extract all files', 'Extract every file in the ZIP into the same folder.'],
+    ['Double-click to start', 'Open the Start-Taskboard file for your operating system.'],
+    ['Follow first-run setup', 'Follow the official installation guidance for missing tools, then sign in to GitHub and your agent.'],
+    ['Choose an agent', action === 'run' ? 'Confirm and run the task. Results are submitted automatically and the publisher is notified to review them.' : 'Select your project and agent, then prepare and approve a proposal in your original session.'],
   ]) {
     const item = element('li');
     item.append(element('strong', '', headingText), paragraph(description));
     steps.append(item);
   }
-  body.append(choices, platformNote, steps, paragraph('需要 Python、Git、GitHub CLI 和所选 Agent；引导会检查并提供安装帮助。此包包含启动脚本，未做原生应用签名。请按系统与组织要求核验来源，不绕过安全保护。', 'download-trust-note'), progress, error, success);
-  footer.append(button('返回', 'button secondary', () => dialog.close()), download);
+  body.append(choices, platformNote, steps, paragraph('Requires Python, Git, GitHub CLI, and your chosen agent. Setup checks these tools and offers installation help. This package contains unsigned scripts. Verify their source according to your device and organization policies.', 'download-trust-note'), progress, error, success);
+  footer.append(button('Back', 'button secondary', () => dialog.close()), download);
   $('#download-content').replaceChildren(header, body, footer);
   openDialog(dialog);
 }
@@ -587,7 +587,7 @@ function openPublish() {
   if (!taskId) taskId = crypto.randomUUID();
   if (!form.elements.repository.value && snapshot.repository && !snapshot.demo) form.elements.repository.value = githubURL(snapshot);
   form.elements.repository.placeholder = `https://${snapshot.hostname}/owner/repo`;
-  $('#source-host-help').textContent = `使用 ${snapshot.hostname} 下的 HTTPS 仓库地址，不包含 .git 后缀。`;
+  $('#source-host-help').textContent = `Use an HTTPS repository URL on ${snapshot.hostname}, without a .git suffix.`;
   renderPublisher();
   openDialog($('#publish-dialog'));
 }
@@ -609,7 +609,7 @@ function exportTask(event) {
     $('#export-success').hidden = false;
     exportedTask = true;
     $('#export-success').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    showToast('任务 JSON 已导出，请使用本地 CLI 发布');
+    showToast('Task JSON exported. Publish it with your local CLI.');
   } catch (issue) {
     error.textContent = issue.message;
     error.hidden = false;
@@ -630,7 +630,7 @@ for (const dialog of $$('dialog')) {
 for (const trigger of $$('[data-close-dialog]')) trigger.addEventListener('click', () => closeDialog(trigger.closest('dialog')));
 for (const trigger of $$('[data-open-guide]')) trigger.addEventListener('click', () => openDialog($('#guide-dialog')));
 for (const trigger of $$('[data-copy]')) trigger.addEventListener('click', () => copyText(trigger.dataset.copy));
-$('#copy-publisher-instructions').addEventListener('click', () => copyText($('#publisher-instructions').value, '已复制，请发送给正在使用的 Agent'));
+$('#copy-publisher-instructions').addEventListener('click', () => copyText($('#publisher-instructions').value, 'Copied. Paste this into your current agent session.'));
 $('#publisher-setup').addEventListener('click', () => openDownload({ action: 'install-publisher' }));
 $('#copy-publish-command').addEventListener('click', () => copyText($('#publish-command').textContent));
 $('#publish-button').addEventListener('click', openPublish);
