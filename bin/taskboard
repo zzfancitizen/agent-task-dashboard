@@ -3,6 +3,8 @@
 from pathlib import Path
 import sys
 
+sys.dont_write_bytecode = True
+
 if sys.version_info < (3, 11):
     raise SystemExit('Taskboard requires Python 3.11 or newer. Run it with a current python3 interpreter.')
 

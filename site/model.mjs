@@ -110,6 +110,39 @@ export function taskCounts(tasks) {
   }, { total: 0, open: 0, active: 0, submitted: 0, accepted: 0 });
 }
 
+export function executionDuration(seconds) {
+  if (!Number.isSafeInteger(seconds) || seconds < 1) return '未指定';
+  if (seconds < 60) return `${seconds} 秒`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder ? `${minutes} 分 ${remainder} 秒` : `${minutes} 分钟`;
+}
+
+export function taskLeaderboards(snapshot) {
+  const empty = { published: [], completed: [] };
+  if (snapshot.demo || !Array.isArray(snapshot.tasks)) return empty;
+  const published = new Map();
+  const completed = new Map();
+  const seen = new Set();
+  const current = [...snapshot.tasks].sort((a, b) => (b.spec?.revision || 0) - (a.spec?.revision || 0) || b.number - a.number);
+  function add(counts, value) {
+    if (typeof value !== 'string' || !value.trim()) return;
+    const actor = value.trim().toLowerCase();
+    counts.set(actor, (counts.get(actor) || 0) + 1);
+  }
+  for (const task of current) {
+    const id = task.spec?.task_id;
+    if (typeof id !== 'string' || !UUID.test(id) || !Object.hasOwn(STATUS, task.status) || seen.has(id.toLowerCase())) continue;
+    seen.add(id.toLowerCase());
+    if (task.status === 'cancelled') continue;
+    add(published, task.author);
+    if (task.status === 'accepted') add(completed, task.attempt?.actor);
+  }
+  const rank = counts => [...counts].map(([actor, count]) => ({ actor, count }))
+    .sort((a, b) => b.count - a.count || (a.actor < b.actor ? -1 : a.actor > b.actor ? 1 : 0)).slice(0, 10);
+  return { published: rank(published), completed: rank(completed) };
+}
+
 export function normalizeSnapshot(data) {
   if (!data || data.schema_version !== 1 || !Array.isArray(data.tasks) || typeof data.demo !== 'boolean' || typeof data.generated_at !== 'string') throw new Error('任务快照格式不兼容，需要 schema_version 1。');
   const hostname = validateHostname(data.hostname);

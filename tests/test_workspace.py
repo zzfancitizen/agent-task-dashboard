@@ -82,12 +82,18 @@ class WorkspaceTests(unittest.TestCase):
             self.prepare()
 
     def test_rejects_path_traversal_backslashes_git_metadata_and_symlink_parents(self):
-        for value in ['../out', '/tmp/out', 'src/../out', 'src\\out', '.git/config', 'src/.git/config', 'src/\nfile']:
+        for value in ['../out', '/tmp/out', 'src/../out', 'src\\out', '.git/config', 'src/.git/config', 'src/\nfile', 'C:outside', 'src/C:outside', 'src/file:stream', 'NUL.txt', 'src/COM1', 'src/aliased.']:
             with self.subTest(value=value), self.assertRaises(ProtocolError):
                 checked_path(self.root, value)
         (self.root / 'linked').symlink_to(self.source, target_is_directory=True)
         with self.assertRaises(ProtocolError):
             checked_path(self.root, 'linked/rules.md')
+
+    def test_git_uses_platform_null_device_to_disable_checkout_hooks(self):
+        from taskboard.workspace import _git
+        with patch('taskboard.workspace.os.devnull', 'NUL'), patch('taskboard.workspace._run') as boundary:
+            _git(self.source, 'status', '--porcelain')
+        self.assertIn('core.hooksPath=NUL', boundary.call_args.args[0])
 
     def test_tracked_repository_symlink_is_rejected(self):
         (self.source / 'escape').symlink_to('/etc')

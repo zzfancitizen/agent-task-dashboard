@@ -5,14 +5,15 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import signal
-import selectors
+from queue import Empty, Full, Queue
 import tempfile
 import subprocess
+from threading import Event, Thread
 import time
 
 from .local import regular_path, session_id
 from .protocol import ProtocolError
+from .platforms import ProcessTree, executable_argv, process_options
 
 
 @dataclass(frozen=True)
@@ -53,23 +54,6 @@ def provider_argv(agent: str, session: str | None = None, *, managed: dict | Non
     raise ProtocolError('INVALID_AGENT', 'Agent must be codex or claude.')
 
 
-def _terminate_group(process: subprocess.Popen) -> None:
-    try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
-        pass
-    try:
-        process.wait(timeout=3)
-    except subprocess.TimeoutExpired:
-        pass
-    # A child can survive while the group leader exits on SIGTERM.
-    try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-    process.wait()
-
-
 def execute(argv: list[str], cwd: Path, output: Path, errors: Path, timeout: float, prompt: str | None = None, *, on_event=None, env: dict | None = None) -> int:
     if timeout <= 0:
         raise ProtocolError('AGENT_TIMEOUT', 'Execution deadline expired.')
@@ -85,46 +69,73 @@ def execute(argv: list[str], cwd: Path, output: Path, errors: Path, timeout: flo
             source.write(prompt.encode('utf-8'))
             source.seek(0)
         try:
-            process = subprocess.Popen(argv, cwd=cwd, stdin=source, stdout=subprocess.PIPE, stderr=stderr, start_new_session=True, env=env)
+            process = subprocess.Popen(executable_argv(argv), cwd=cwd, stdin=source, stdout=subprocess.PIPE, stderr=stderr, env=env, **process_options())
         except OSError as exc:
             raise ProtocolError('AGENT_UNAVAILABLE', f'Cannot launch {argv[0]}. Install and authenticate the CLI locally.') from exc
+        try:
+            tree = ProcessTree(process)
+        except BaseException:
+            process.stdout.close()
+            raise
         deadline = time.monotonic() + timeout
         pending = b''
-        try:
-            with selectors.DefaultSelector() as selector:
-                selector.register(process.stdout, selectors.EVENT_READ)
-                while True:
-                    if process.poll() is not None:
-                        _terminate_group(process)
-                    remaining = deadline - time.monotonic()
-                    if remaining <= 0:
-                        raise ProtocolError('AGENT_TIMEOUT', 'Execution timed out; its process group was stopped.')
-                    if not selector.select(min(0.2, remaining)):
-                        continue
-                    chunk = os.read(process.stdout.fileno(), 65536)
+        chunks = Queue(maxsize=16)
+        stopping = Event()
+        def read_output():
+            try:
+                while not stopping.is_set():
+                    chunk = process.stdout.read1(65536)
+                    while not stopping.is_set():
+                        try:
+                            chunks.put(chunk, timeout=0.1)
+                            break
+                        except Full:
+                            continue
                     if not chunk:
                         break
-                    stdout.write(chunk)
-                    stdout.flush()
-                    if on_event is None:
+            except OSError as exc:
+                if not stopping.is_set():
+                    chunks.put(exc)
+        reader = Thread(target=read_output, name='taskboard-provider-output', daemon=True)
+        reader.start()
+        try:
+            while True:
+                if process.poll() is not None:
+                    tree.stop()
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise ProtocolError('AGENT_TIMEOUT', 'Execution timed out; its process tree was stopped.')
+                try:
+                    chunk = chunks.get(timeout=min(0.2, remaining))
+                except Empty:
+                    continue
+                if isinstance(chunk, OSError):
+                    raise chunk
+                if not chunk:
+                    break
+                stdout.write(chunk)
+                stdout.flush()
+                if on_event is None:
+                    continue
+                pending += chunk
+                while b'\n' in pending:
+                    line, pending = pending.split(b'\n', 1)
+                    try:
+                        event = json.loads(line)
+                    except (ValueError, UnicodeError):
                         continue
-                    pending += chunk
-                    while b'\n' in pending:
-                        line, pending = pending.split(b'\n', 1)
-                        try:
-                            event = json.loads(line)
-                        except (ValueError, UnicodeError):
-                            continue
-                        if isinstance(event, dict):
-                            on_event(event)
-                    if len(pending) > 1024 * 1024:
-                        raise ProtocolError('AGENT_OUTPUT_INVALID', 'Provider emitted an oversized unterminated event.')
+                    if isinstance(event, dict):
+                        on_event(event)
+                if len(pending) > 1024 * 1024:
+                    raise ProtocolError('AGENT_OUTPUT_INVALID', 'Provider emitted an oversized unterminated event.')
             process.wait(timeout=max(0.01, deadline - time.monotonic()))
             return process.returncode
         except subprocess.TimeoutExpired as exc:
             raise ProtocolError('AGENT_TIMEOUT', 'Execution timed out; its process group was stopped.') from exc
         finally:
-            _terminate_group(process)
+            stopping.set()
+            tree.stop()
+            reader.join(timeout=3)
             process.stdout.close()
 
 

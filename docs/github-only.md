@@ -2,116 +2,142 @@
 
 [完整中文使用手册](../README.md) | [Complete English manual](../README.en.md)
 
-这份实现说明替代最初的独立后台设计。线上只有 GitHub：Issues 保存请求，Actions 顺序处理，`taskboard-state` 分支保存确认后的状态，`gh-pages` 分支保存公开看板。本机程序负责调用已有 CLI 和接收成果，无常驻线上服务或数据库。
+当前实现采用 GitHub Issues、Actions、Pages 和 Release 附件。Issues 保存任务与请求，Actions 顺序处理，`taskboard-state` 分支保存确认状态，`gh-pages` 分支提供羊皮纸看板和下载工具。本地程序调用成员已有的 Codex CLI / Claude Code；没有额外托管的应用服务或数据库，也不要求本地页面。
 
-**日常查看全部通过 GitHub Pages 完成，不需要本地页面或 HTTP 服务。** 浏览器从同一 Pages 站点读取 `tasks.json`；运行按钮直接唤起本地 CLI，CLI 不依赖本地网站。
+## 组件与完整流程
 
-## 部署前提
+| 组件 | 职责 |
+| --- | --- |
+| GitHub Pages | 显示确认后的任务、交付和榜单，生成对应系统的下载 ZIP |
+| 项目 skill / rule / hook | 在现有发布者会话中整理提案、取得明确发布同意，并绑定准确原会话 |
+| 本地执行包 | 引导工具安装和登录，确认领取，在独立目录运行成员自己的 agent，收集成果 |
+| GitHub Issues / 评论 | 保存不可变任务内容、领取/验收请求和成果传输分片 |
+| Actions controller | 校验身份与任务状态，顺序处理请求，以工作流凭据保存成果，刷新状态和页面 |
+| GitHub Releases | 保存确认成果的下载附件 |
 
-公司 GitHub 已启用 Issues、Actions 和 Pages。GitHub Enterprise Server 使用公司已有 self-hosted runner；GitHub.com 默认使用 `ubuntu-latest`。可设置仓库变量 `TASKBOARD_RUNNER` 选择公司 runner 标签。Runner 需要 Python 3.11+、GitHub CLI 和 Node.js 18+（用于前端测试）；运行 agent 的电脑还需要对应 agent CLI。
+发布者的 agent 先在本地整理目标、固定源码和资源、范围及验收条件。发布者明确同意提案后，工具创建 Issue。Actions 确认后，委托出现在 Pages。
 
-工作流使用 `actions/checkout@v4`。内网禁用外部 Actions 时，由管理员将其替换为公司已镜像的 checkout action。代码不调用外部托管平台，也不需要模型 API key。
+领取者在 Pages 选择操作系统，下载 ZIP，解压并打开启动文件。首次安装/登录引导完成后选择 Codex 或 Claude；本地程序重新读取任务，取得 Actions 确认的当前执行编号后才开始工作。执行结果通过评论交给 Actions，Actions 保存附件并发出结果通知。发布者在原会话中同步、检查和验收；已验收任务计入完成榜。
 
-## 导入与启用
+下载并不预占任务，网页快照不是领取凭据，执行包也不包含可用于登录的 token。浏览器与本地工具之间不需要 HTTP 服务。
 
-1. 将项目代码导入公司仓库的默认分支，启用 Actions。
-2. 如需要，在 `.github/taskboard.json` 的 `allowed_members` 中填写允许参与的 GitHub 用户名。参与者必须具有仓库 write/maintain/admin 权限，以便上传 Release 成果；非空名单会进一步限制参与人员，不能代替 GitHub 原生写权限。普通公开访问者只能浏览。
-3. 首次手动运行 **Task board controller**。它会创建 `taskboard-state` 和 `gh-pages` 分支；此时尚不要求 Pages 已启用。
-4. 在仓库 **Settings → Pages** 选择从分支发布，来源为 `gh-pages` 的 `/ (root)`。按已确认要求使用公开站点，不增加应用登录。
-5. 设置仓库变量 `TASKBOARD_PAGES_ENABLED=true`，再次运行 controller。工作流会显式请求 Pages build，避免依赖 `GITHUB_TOKEN` 提交自动触发构建。
-6. 以 GitHub 显示的实际 Pages 地址访问看板。域名、仓库路径与任务链接来自 Actions 当前仓库环境，无需把内网仓库地址写进代码。
+## 原生访问权限
 
-GitHub Enterprise Server 的 Pages 管理策略和 build API 权限需要在公司环境验证。如果 build API 被策略禁用，已生成的 `gh-pages` 分支仍可由公司现有发布流程构建；不要另起一套后台作为默认补救。
+没有应用层参与者名单或额外角色授予步骤。参与者使用公司 GitHub SSO 和已有 GitHub 账号，需要看板仓库读取、创建 Issue 和评论的能力，以及任务源码/资料仓库的读取权限。普通参与者不需要 `write`、`maintain` 或 `admin` 仓库角色。
 
-## 每位成员的本机配置
+Release 上传与状态分支写入使用 Actions 自己的权限。只有 publisher 能 accept / reject / cancel，只有当前有效 attempt 的 actor 能 start / submit / release；这些任务归属约束仍然保留。身份来自 GitHub API 返回的实际 Issue/comment 作者，不从请求 JSON 采信用户名。
 
-以下域名和仓库名是说明用值，使用时替换为公司的实际值：
+SSO 授权和仓库读取权由公司 GitHub 决定，应用不替成员授予源码访问权。Pages 按本方案作为公开静态站点发布，不增加应用登录或用户私有任务筛选。原 session ID、凭据和完整会话日志保留在发布者本机，不写入任务或公开快照。
+
+## 管理员部署
+
+公司 GitHub 需启用 Issues、Actions 和 Pages。GitHub.com 默认使用 `ubuntu-latest`；GitHub Enterprise Server 默认使用公司已有 `self-hosted` runner。通过仓库变量 `TASKBOARD_RUNNER` 可指定 runner 标签。
+
+Runner 需要 Python 3.11+ 和 GitHub CLI。`Check task board` 还需要 Node.js 18+；无应用第三方包安装步骤。工作流使用 `actions/checkout@v4`，内网不允许外部 Actions 时使用公司镜像版本。
+
+1. 完整导入项目到仓库默认分支，包括 `.github/`、`launchers/`、`integrations/`。
+2. 启用 Issues / Actions / Pages，并按公司 GitHub 原生设置开放成员 Issue/评论操作。
+3. 允许工作流 `contents: write`、`issues: write`、`pages: write`；不需要成员个人 token 或模型 API key。
+4. 手动运行 **Actions → Task board controller → Run workflow**，生成 `taskboard-state` 和 `gh-pages`。
+5. 在 **Settings → Pages** 选择 **Deploy from a branch**，来源为 **`gh-pages` / `/ (root)`**。
+6. 将仓库变量 `TASKBOARD_PAGES_ENABLED` 设为字符串 `true`，再次运行 controller，显式请求 Pages build。
+7. 使用 GitHub 显示的实际 Pages 地址。内网域名与仓库路径由当前 Actions 环境提供，不需改源码中的固定地址。
+
+任务仓库不再配置 `.github/taskboard.json` 成员名单。公司若禁用 Pages build API，可让既有 Pages 发布流程读取已生成的 `gh-pages`；无需另建应用后台。实际 runner、权限和 Pages build 需在目标 GitHub 环境核验。
+
+## 发布集成与准确会话关联
+
+从 Pages 下载发布工具配置包，解压运行，选择 provider 与源码项目目录。已有开发环境也可执行：
 
 ```sh
-gh auth login --hostname git.company.example
-./bin/taskboard --repo team/agent-task-board --hostname git.company.example init --allow-repo team/demo-api
+./bin/taskboard init --repo team/agent-task-board --hostname git.company.example --allow-repo team/demo-api
+./bin/taskboard install-integration --provider codex --project /absolute/project/path
 ```
 
-授权在本机完成。看板网页没有 token 输入框，不复制 CLI 登录文件或 session 日志到 GitHub。源代码仓库和资料仓库需要位于配置允许的仓库集合中；通过 init 的 `--allow-repo` 追加。
+示例值需要替换；使用 Claude 时将 provider 改为 `claude`。Codex 集成安装到 `.agents/skills/taskboard-publish/`，在 `AGENTS.md` 和 `.codex/hooks.json` 添加受标记管理的规则与 hook；Claude 使用 `.claude/skills/taskboard-publish/`、`CLAUDE.md` 和 `.claude/settings.json`。已有无关配置保留。按 provider 的 hook 信任与加载要求使其生效。
 
-## Agent 自主发布
+`SessionStart` / `UserPromptSubmit` hook 从真实事件获得 session ID 与 cwd，在本地保存 callback，供 agent 的提案辅助脚本读取。Hook 不查找“最新会话”，不读取 transcript，不做网络轮询，也不调用模型。
 
-用 `taskboard start --agent codex --prompt work.md --workspace /absolute/project/path` 启动受管理的发起会话。启动器把委派工具说明加入上下文，并捕获真实 session 启动事件。Agent 调用 publish 时，本地工具自动关联到这个原会话；任务 Issue 不包含 session ID。Claude Code 同样通过 `--agent claude` 使用。
+Agent 写出目标 JSON 并调用 `prepare`，得到包含固定 commit、资源内容哈希、prompt 和验收的具体本地提案。它先向用户展示提案，明确询问是否发布；用户同意后调用 `publish ... --approved`。没有同意标记不能通过提案发布接口；安装 skill 或复杂度判断都不是发布授权。已有 `publish FILE` 为显式高级操作保留。
 
-## 发布、认领与交付
+源输入需要已提交且能从远端获取。涉及任务的脏工作区不能静默遗漏；工具不会自动打包未提交工作区或完整原会话。完整任务包和本机原会话绑定用途不同：领取者执行独立任务，发布者稍后用成果恢复自己的工作。
 
-任务包包含完整 prompt、固定 commit 的源代码和资源、允许修改目录、执行时限、验收命令和产物要求。可从看板“发布任务”导出 JSON，或让 agent 按示例生成。示例是结构说明，运行前必须填入真实可访问资源与摘要。
+## 下载包与首次引导
 
-```sh
-./bin/taskboard validate task.json
-./bin/taskboard publish task.json --session ORIGINAL_SESSION_ID --agent codex --workspace /absolute/project/path
-./bin/taskboard run 42 --agent codex
-```
+站点构建生成 `downloads/runtime.json` 和 `downloads/taskboard-runtime.zip`，并复制各系统 starter 及 `bootstrap.py`。浏览器先验证 runtime SHA-256，再将它和 `request.json`、说明文件及所选 starter 打成单个任务 ZIP。
 
-`run` 先发送认领请求，等待 Actions 在状态分支确认当前账号与执行编号，之后准备独立工作目录并运行 agent。它不会依据静态页面上的“待认领”直接开跑。开始确认仍在排队时保留工作目录和原请求，重试只继续等待，不把延迟当成执行失败。
+`request.json` 只携带版本、GitHub 主机/仓库、Issue 编号、task revision/digest、runtime 摘要及 `run` / `install-publisher` 动作。任务 prompt 不拼接进可执行脚本。Bootstrap 再次校验 runtime，安全解压到用户本地缓存；配置按看板隔离。
 
-执行结果通过 Release 附件保存，记录哈希，之后提交结果 manifest 到 Issue。报告保留 summary、assumptions 和 unresolved；如果 agent 返回普通文本，会保留全文并明确提示尚未得到结构化假设/未解决事项。不会自动合并源代码。相同执行编号的产物不允许用不同内容覆盖。
+| 系统 | 双击入口 | 本地数据根目录 |
+| --- | --- | --- |
+| Windows | `Start-Taskboard.cmd` | `%LOCALAPPDATA%/Taskboard` |
+| macOS | `Start-Taskboard.command` | `~/Library/Application Support/Taskboard` |
+| Linux | `Start-Taskboard.sh` | `$XDG_DATA_HOME/taskboard`，缺省 `~/.local/share/taskboard` |
 
-已发布的任务包不可原地修改。需要改变目标或资源时，先用 `taskboard cancel ISSUE` 取消旧任务，用新的 task ID 发布新任务；避免两种内容共享同一个确认记录。
+下载 runtime 按摘要保存在数据根目录的 `runtimes/`，看板状态位于 `boards/` 下各自目录。`TASKBOARD_HOME` 可指定看板状态位置；手工 CLI 的 `--home` 同样可指定。发布集成另在对应看板状态目录的 `runtimes/` 保留其 runtime，不依赖用户一直保留下载 ZIP。安装后的 helper `context` 返回包含正确解释器、runtime 和 `--home` 的完整 `taskboard_argv`，避免 agent 使用错误看板配置。
 
-## 回到原会话
+用户应先完整解压 ZIP。Starter 先检查 Python 3.11+，缺少时提供官方安装页面、重试和退出。之后向导检查 Git、gh 和所选 provider，提供经用户同意的可用包管理器安装或官方说明页。GitHub 使用浏览器登录与公司 SSO；agent 使用自己的原生登录。
+
+启动文件是脚本，不是签名原生可执行程序。系统可能要求来源/运行确认，Linux 文件管理器可能要求允许作为程序或在终端运行；不绕过系统保护。源项目自身依赖按任务描述准备，向导不自动推断或安装所有项目依赖。
+
+## 普通成员如何提交 Release 成果
+
+普通只读成员不能直接写 Release，因此默认结果路径使用 Issue 评论传输桥：
+
+1. 本地将成果文件确定性压缩为 ZIP，并计算摘要与 manifest。
+2. 在所属 Issue 创建分片评论，保留实际返回的 comment ID。
+3. 发布 `submit_bundle` 命令，引用分片 ID、当前 task revision/digest、attempt ID 和验证报告。
+4. Actions 先验证当前 actor、attempt 和租约，再读取同 Issue、同作者、未经编辑的分片。
+5. 校验分片和完整 ZIP 摘要、路径、文件数量/大小及报告；拒绝符号链接、重复路径、穿越和解压超限。
+6. Actions 只解包保存文件，不运行产物。它以工作流凭据上传 Release，补齐 HTTPS 产物地址，然后提交普通成果状态。
+7. 先持久化 canonical state，再发结果通知并更新 Pages。通知失败可以恢复，不撤销已经确认的成果。
+
+当前上限：压缩 ZIP 1 MiB；每个未压缩文件 20 MiB；未压缩总量 100 MiB；分片每段 30 KiB 原始字节、最多 35 段；最终命令不超过 48 KiB。超限在本地发送前拒绝，适合代码和文本报告。大体积必需产物应调整委托范围，不能静默丢弃。
+
+分片使用 `<!-- taskboard:artifact:v2 -->`，最终命令使用命令 marker。单个分片无需启动一次 controller。相同执行与内容可恢复上传；不同内容不能冒用相同请求 ID 或覆盖同名产物。
+
+旧 HTTPS `submit` manifest 仍作高级兼容接口保留，它不替使用者上传文件。无需普通成员通过此旧路径自己创建 Release。
+
+## 结果通知、原会话与排行榜
+
+Actions 对已确认提交发布独立结果评论，提及 publisher 与 executor，包含 result ID 和产物链接。它使用结果标记和通知记录处理重试；普通状态评论的编辑不代替新交付通知。GitHub 的邮件/推送行为遵循用户原有通知设置。
+
+发布者在原会话要求 agent 通过 hook 给出的 `taskboard_argv` 同步与检查。手工安装 CLI 的用户可在看板项目源码根目录执行以下命令，并确保 `--home` 与发布时一致：
 
 ```sh
 ./bin/taskboard sync
 ./bin/taskboard sync --resume
 ```
 
-默认 sync 下载并登记新成果。用户产物保存在该结果目录的 `artifacts/` 下，manifest 和投递日志使用独立位置，避免同名文件覆盖。只有显式选择 `--resume` 才尝试把已绑定成果送回指定原 session；从不使用 `--last`。用户应在原会话已经退出或确认空闲时调用。程序会对同一 session 的本地投递加锁，但不能阻止用户在另一个未受管理的终端同时打开相同 session。
+默认 `sync` 不调用模型，只下载当前账号发布的确认成果，校验哈希，保存到 `inbox/<result-id>/artifacts/`。Manifest 与投递日志存于独立位置，避免用户产物覆盖元数据。项目 hook 只提示已在本地同步、与当前 session 精确绑定的新成果。
 
-投递前记录 delivering，完成后记录 delivered。中断导致结果不明时保留 unknown 状态，避免自动重复消耗额度；需要核对会话后再处理。结果送达与任务验收分离，发起者确认实际结果后才 accept。
+`--resume` 是显式原会话接续：应先退出或确认原会话空闲，避免同一 session 的多个写入者。工具对本地投递加锁、记录开始与完成；结果不明保留 `unknown`，不自动重复调用模型。没有常驻 listener，不会唤醒离线电脑；结果仍保留在 GitHub。
 
-原电脑离线、原账号没有额度或原 session 记录不可用时，成果继续保留在 GitHub，并可下载查看。
-
-## 一键运行
-
-macOS 可安装本地 URL handler：
-
-```sh
-./bin/taskboard install-launcher
-```
-
-之后看板的“认领并运行”会唤起本机终端。首次安装和本机 gh/agent 登录是前提。URL 只携带仓库、域名、Issue 编号及所选 Agent；启动器核对它们与本机配置一致后，再读取真实任务。
-
-Linux 和未安装 handler 的电脑可复制看板提供的 CLI 命令。页面和本地运行工具之间不需要一个额外部署的 HTTP 服务。
+结果送达不等于验收。发布者通过 result ID 接受或拒收；`accept` 不应用补丁、合并或部署。排行榜基于确认快照：发布榜统计不同 task ID，排除 cancelled；完成榜仅统计 accepted，归属被验收那次执行的 actor。重试、重复评论和 submitted 状态不增加完成量。
 
 ## 协调与恢复规则
 
-- 控制器工作流采用仓库级单并发，所有状态变更均由它处理。
-- 请求保留在 Issue 评论中；每次运行重新检查未处理评论。待运行工作流被替换不等于请求丢失。
-- 手动 workflow_dispatch 与每小时两次的定时恢复都会补处理积压请求；调度时间不保证实时。
-- 同一 request ID 重放不重复执行；内容不同的重用被拒绝。
-- 当前认领固定期限为任务运行时限加 10 分钟准备时间。首版不以频繁 Actions 心跳续租。
-- 同时只有一个有效执行编号能提交；旧编号过期后的迟到结果不能覆盖新结果。
-- 状态分支先提交，Issue 展示后更新。页面是异步快照，不作为认领依据。
-- 不把执行者的完成声明自动当作已验收事实。
+- 仓库级 controller 单并发，统一串行处理状态变更。
+- 请求保留在 Issue 评论中，每次扫描补处理未处理评论；替换待运行工作流不等于丢失请求。
+- `workflow_dispatch` 和每小时两次扫描可恢复积压，实际调度不保证实时。
+- 同 request ID、同身份和内容重放不重复应用；不同内容的重用被拒绝。
+- 当前认领期限为运行时限加 600 秒准备时间；确认领取即计一次尝试，不靠频繁 Actions 心跳续租。
+- 同时只有当前有效 attempt 能提交，迟到的旧执行不能覆盖新结果。
+- 等待 start 确认时保留原请求与工作目录；确认延迟不视为可以重跑模型的理由。
+- 本地执行或投递结果不明时保留记录并停在可检查状态；不要删除状态来盲目重试。
+- 状态分支先提交，Issue 和 Pages 后投影；通知或显示失败不撤销已确认状态。
+- Actions 不执行任务 prompt、资源脚本、agent 或验收命令；模型工作与计费在领取者电脑上发生。
 
-Actions 只处理 JSON、GitHub API 和页面构建；不会执行任务 prompt、资源中的脚本或验收命令。真正的 agent 工作消耗认领者自己的 CLI 额度。
+管理员恢复时先检查 Actions 日志、Issue 请求和确认状态，再手动运行 controller。不要手工编辑状态分支或把 Pages 快照当成权威状态。
 
-## 开发时可选：本地检查与预览
-
-以下命令供开发与验收使用；正式成员直接访问 GitHub Pages，可以跳过本地预览。
+## 开发与目标环境验证
 
 ```sh
 python3 -m unittest discover -s tests -v
-node --test tests/test_site.mjs
+node --test tests/test_*.mjs
 python3 -m compileall -q taskboard scripts
-python3 -m http.server 8080 --directory site --bind 127.0.0.1
 ```
 
-打开 `http://127.0.0.1:8080`。未配置的看板显示接入说明；示例任务只在用户明确进入演示模式时显示，不会作为真实任务部署。
+可选视觉预览用 `python3 -m http.server 8080 --directory site --bind 127.0.0.1`，再打开 `http://127.0.0.1:8080` 并明确进入演示。完整下载资源需要先走站点构建；源码 `site/` 预览不是完整发布产物。正式成员不需要本地预览。
 
-## 实际联调范围
-
-本地测试覆盖协议、权限、认领冲突、迟到提交、持久化/重复投递、路径与资源校验、GitHub transport 及 UI 行为。公司内网的 SSO、runner 权限、Pages build、两个真实账号执行和计费归属，需要在导入后验证。项目不声称已完成无法访问的内网部署。
-
-## 参考
-
-- [Issue 评论触发工作流](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#issue_comment)
-- [Actions 并发与积压处理](https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency)
-- [请求 Pages build](https://docs.github.com/en/rest/pages/pages#request-a-github-pages-build)
-- [Enterprise Server runner](https://docs.github.com/en/enterprise-server@3.19/actions/concepts/runners/github-hosted-runners)
+验证分为本地自动化和目标环境联调：本地以临时 Git 仓库、模拟 GitHub API/provider 子进程及下载包检查覆盖状态、传输、安装分支和 UI；不执行真实安装、登录、模型调用或 Issue 写入。Windows / Linux 原生桌面双击与安装、公司 SSO、runner/Pages、真实两账号的完整接力与计费，需要在目标环境继续验证，不声称已完成这些现场检查。

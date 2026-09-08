@@ -99,6 +99,33 @@ class CLITests(unittest.TestCase):
         self.assertEqual(self.command('publish', str(self.file))[0], 1)
         self.assertEqual(len(self.gateway.issue_rows), 1)
 
+    def test_proposal_cli_prepares_locally_then_requires_explicit_publish_consent(self):
+        from taskboard import publishing
+        self.git('remote', 'add', 'origin', 'https://git.corp.example/company/source.git')
+        goal = self.root / 'goal.json'
+        goal.write_text(json.dumps({'goal': 'Update the value', 'context': 'A separate part of the Python source.', 'acceptance': ['The source value is 2.'], 'delegation_reason': 'Can be executed independently.'}))
+        original = publishing._git
+        def advertised_refs(root, *argv, **kwargs):
+            if argv[0] == 'ls-remote':
+                return subprocess.CompletedProcess(argv, 0, f'{self.spec["source"]["base_commit"]}\trefs/heads/main\n'.encode(), b'')
+            return original(root, *argv, **kwargs)
+        with patch('taskboard.publishing._git', side_effect=advertised_refs):
+            response = self.command('propose', '--workspace', str(self.source), '--goal-file', str(goal), '--title', 'Update the value', '--provider', 'codex', '--session', 'cf20e605-88b8-443f-87a1-50c027e984e1', '--resource', 'src/main.py', '--write-path', 'src/', '--command-json', json.dumps([sys.executable, '-m', 'unittest']))
+        self.assertEqual(response[0], 0, response)
+        proposal = json.loads(response[1])
+        self.assertFalse(proposal['approved'])
+        self.assertEqual(self.gateway.operations, [])
+        rejected = self.command('publish-proposal', proposal['id'])
+        self.assertEqual(rejected[0], 1)
+        self.assertIn('PUBLISH_APPROVAL_REQUIRED', rejected[2])
+        self.assertEqual(self.gateway.operations, [])
+        self.gateway.permission = 'read'
+        for _ in range(2):
+            response = self.command('publish-proposal', proposal['id'], '--approved')
+            self.assertEqual(response[0], 0, response)
+        self.assertEqual(len(self.gateway.issue_rows), 1)
+        self.assertEqual(LocalStore(self.home).binding(1)['session_id'], 'cf20e605-88b8-443f-87a1-50c027e984e1')
+
     def test_pending_claim_does_not_start_model_or_checkout(self):
         self.publish()
         self.gateway.delay = True
@@ -106,6 +133,43 @@ class CLITests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn('PENDING', errors)
         self.assertFalse((self.home / 'runs').exists())
+
+    def test_download_retry_fence_rejects_stale_digest_and_new_claim_generation(self):
+        from taskboard.protocol import task_digest
+        self.publish()
+        response = self.command('run', '1', '--agent', 'codex', '--wait', '0', '--expected-task-digest', '0' * 64, '--expected-attempt-count', '1')
+        self.assertEqual(response[0], 1, response)
+        self.assertEqual(self.gateway.state['tasks']['1']['attempt_count'], 0)
+        self.assertEqual(self.command('claim', '1', '--wait', '0')[0], 0)
+        self.assertEqual(self.command('release', '1', '--reason', 'Stop this run')[0], 0)
+        response = self.command('run', '1', '--agent', 'codex', '--wait', '0', '--expected-task-digest', task_digest(self.spec), '--expected-attempt-count', '1')
+        self.assertEqual(response[0], 1, response)
+        self.assertEqual(self.gateway.state['tasks']['1']['attempt_count'], 1)
+        self.assertFalse((self.home / 'runs').exists())
+
+    def test_start_ack_for_old_attempt_cannot_launch_after_same_actor_reclaims(self):
+        import time
+        import uuid
+        from taskboard.state import apply_command
+        self.publish()
+        original = self.gateway.run
+        switched = False
+        def changed_state(argv, **kwargs):
+            nonlocal switched
+            record = self.gateway.state['tasks']['1']
+            if any('/contents/state.json' in part for part in argv) and record['status'] == 'running' and not switched:
+                switched = True
+                for operation in ({'op': 'release', 'attempt_id': record['attempt']['id'], 'reason': 'Stopped elsewhere'}, {'op': 'claim'}):
+                    command = {**operation, 'request_id': str(uuid.uuid4()), 'revision': 1}
+                    record = apply_command(record, command, actor='alice', comment_id=900, now=int(time.time()))
+                self.gateway.state['tasks']['1'] = record
+            return original(argv, **kwargs)
+        calls = self.root / 'calls'
+        with patch('taskboard.github.GitHub._run', side_effect=changed_state), patch.dict(os.environ, {'CLI_TEST_CALLS': str(calls)}):
+            response = self.command('run', '1', '--agent', 'codex', '--wait', '0', '--expected-attempt-count', '1')
+        self.assertEqual(response[0], 1, response)
+        self.assertEqual(self.gateway.state['tasks']['1']['attempt_count'], 2)
+        self.assertFalse(calls.exists())
 
     def test_lost_claim_response_is_recovered_with_same_request_id(self):
         self.publish()
@@ -123,7 +187,8 @@ class CLITests(unittest.TestCase):
         manifest = record['result']['manifest']
         self.assertEqual({artifact['name'] for artifact in manifest['artifacts']}, {'changes.patch', 'summary.md', 'verification.json'})
         self.assertEqual(manifest['verification'][0]['exit_code'], 0)
-        patch_asset = next(asset for release in self.gateway.releases.values() for asset in release['assets'] if asset['name'] == 'changes.patch')
+        patch_url = next(artifact['uri'] for artifact in manifest['artifacts'] if artifact['name'] == 'changes.patch')
+        patch_asset = next(asset for release in self.gateway.releases.values() for asset in release['assets'] if asset['browser_download_url'] == patch_url)
         patch_file = self.root / 'returned.patch'
         patch_file.write_bytes(self.gateway.assets[patch_asset['id']])
         self.git('apply', '--check', str(patch_file))
@@ -204,7 +269,7 @@ class CLITests(unittest.TestCase):
     def test_lost_submit_acknowledgment_is_recovered_without_rerunning(self):
         self.publish()
         calls = self.root / 'calls'
-        self.gateway.lose_op = 'submit'
+        self.gateway.lose_op = 'submit_bundle'
         with patch.dict(os.environ, {'CLI_TEST_CALLS': str(calls)}):
             self.assertEqual(self.command('run', '1', '--agent', 'codex', '--wait', '0')[0], 1)
             response = self.command('run', '1', '--agent', 'codex', '--wait', '0')
@@ -294,21 +359,34 @@ class CLITests(unittest.TestCase):
         self.assertEqual(self.command('run', '1', '--agent', 'codex', '--wait', '0')[0], 1)
         self.assertEqual(self.gateway.state['tasks']['1']['attempt_count'], 0)
 
-    def test_read_only_account_cannot_publish_claim_or_start_a_provider(self):
+    def test_read_only_account_can_publish_run_and_return_artifacts_via_actions(self):
         self.gateway.permission = 'read'
-        self.assertEqual(self.command('publish', str(self.file))[0], 1)
-        self.assertEqual(self.gateway.issue_rows, [])
-        self.gateway.permission = 'write'
         self.publish()
-        self.gateway.permission = 'read'
-        self.assertEqual(self.command('claim', '1', '--wait', '0')[0], 1)
         calls = self.root / 'calls'
         with patch.dict(os.environ, {'CLI_TEST_CALLS': str(calls)}):
             response = self.command('run', '1', '--agent', 'codex', '--wait', '0')
-        self.assertEqual(response[0], 1)
-        self.assertIn('WRITE_PERMISSION_REQUIRED', response[2])
-        self.assertEqual(self.gateway.state['tasks']['1']['attempt_count'], 0)
-        self.assertFalse(calls.exists())
+        self.assertEqual(response[0], 0, response)
+        self.assertEqual(self.gateway.state['tasks']['1']['status'], 'submitted')
+        self.assertEqual(calls.read_text().splitlines(), ['call'])
+        self.assertFalse(any('/collaborators/' in part for argv in self.gateway.operations for part in argv))
+        self.assertTrue(any('taskboard:artifact:v2' in row['body'] for row in self.gateway.comments))
+        self.assertEqual(self.command('sync')[0], 0)
+
+    def test_delayed_bundle_confirmation_never_starts_a_second_model(self):
+        self.publish()
+        self.gateway.delay_op = 'submit_bundle'
+        calls = self.root / 'calls'
+        with patch.dict(os.environ, {'CLI_TEST_CALLS': str(calls)}):
+            response = self.command('run', '1', '--agent', 'codex', '--wait', '0')
+            self.assertEqual(response[0], 0, response)
+            self.assertEqual(self.gateway.state['tasks']['1']['status'], 'running')
+            self.gateway.process_pending(1)
+            response = self.command('run', '1', '--agent', 'codex', '--wait', '0')
+        self.assertEqual(response[0], 0, response)
+        self.assertEqual(calls.read_text().splitlines(), ['call'])
+        job = next(iter(LocalStore(self.home).data()['runs'].values()))
+        self.assertEqual(job['phase'], 'submitted')
+        self.assertEqual(json.loads(Path(job['result_file']).read_text()), self.gateway.state['tasks']['1']['result']['manifest'])
 
     def test_read_only_account_can_still_download_its_returned_results(self):
         self.publish()
@@ -336,7 +414,8 @@ class CLITests(unittest.TestCase):
         manifest = self.gateway.state['tasks']['1']['result']['manifest']
         self.assertEqual(manifest['summary'], report)
         self.assertTrue(manifest['unresolved'])
-        summary_asset = next(asset for release in self.gateway.releases.values() for asset in release['assets'] if asset['name'] == 'summary.md')
+        summary_url = next(artifact['uri'] for artifact in manifest['artifacts'] if artifact['name'] == 'summary.md')
+        summary_asset = next(asset for release in self.gateway.releases.values() for asset in release['assets'] if asset['browser_download_url'] == summary_url)
         self.assertIn(report, self.gateway.assets[summary_asset['id']].decode())
 
     def test_only_author_can_cancel_and_rejected_actor_does_not_poison_owner_request(self):

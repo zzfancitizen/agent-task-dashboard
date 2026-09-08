@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-import fcntl
 import hashlib
 import json
 import os
@@ -13,6 +12,7 @@ from typing import Callable
 import uuid
 
 from .protocol import ProtocolError
+from .platforms import file_lock, fsync_directory
 
 
 def repository_name(value: str) -> str:
@@ -60,11 +60,7 @@ def atomic_json(path: Path, value: dict) -> None:
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        fsync_directory(path.parent)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -102,11 +98,8 @@ class LocalStore:
         regular_path(path)
         fd = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, 'O_NOFOLLOW', 0), 0o600)
         try:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB))
-            except BlockingIOError as exc:
-                raise ProtocolError('LOCAL_BUSY', 'Another local Taskboard process holds this operation or session lock.') from exc
-            yield
+            with file_lock(fd, blocking=blocking):
+                yield
         finally:
             os.close(fd)
 

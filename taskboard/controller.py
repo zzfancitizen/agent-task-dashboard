@@ -5,16 +5,26 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import re
 import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .download_assets import build_download_assets
 from .github import GitHub
-from .protocol import ProtocolError, parse_command, parse_task_issue
+from .protocol import ProtocolError, _integer, _require, _text, _validate_command, parse_command, parse_task_issue
 from .state import apply_command, expire_task, new_task
+from .transfers import command_fingerprint, resolve_bundle
 
 STATUS_MARKER = "<!-- taskboard:status:v1 -->"
+CONTROLLER_LOGIN = "github-actions[bot]"
+
+
+def _infrastructure_error(error):
+    return (error.code.startswith("GITHUB_") or error.code in {
+        "GH_NOT_INSTALLED", "ARTIFACT_UPLOAD_INCOMPLETE",
+    })
 
 
 def _reject(record, command, actor, comment_id, code, message):
@@ -29,7 +39,69 @@ def _reject(record, command, actor, comment_id, code, message):
             "code": code,
             "message": message,
             "comment_id": comment_id,
+            "fingerprint": command_fingerprint(command, actor),
         }
+
+
+def process_command(record, command, comments, api, *, actor, comment_id, now):
+    """Resolve a bundle at the GitHub boundary, then use the pure task reducer.
+
+    Raw request fingerprints fence retries before reading chunks or uploading.
+    Transient transport errors leave the entire batch retryable.
+    """
+    command = _validate_command(command)
+    _text(actor, "actor")
+    _integer(comment_id, "comment_id", minimum=1)
+    current = expire_task(record, now)
+    fingerprint = command_fingerprint(command, actor)
+    previous = record["processed"].get(command["request_id"])
+    if previous is not None:
+        _require(previous.get("raw_fingerprint", previous.get("fingerprint")) == fingerprint,
+                 "Request ID was already used for different content or actor.", "IDEMPOTENCY_CONFLICT")
+        return copy.deepcopy(record)
+    try:
+        resolved = (resolve_bundle(current, command, comments, api, actor=actor, now=now)
+                    if command["op"] == "submit_bundle" else command)
+        result = apply_command(current, resolved, actor=actor, comment_id=comment_id, now=now)
+    except ProtocolError as error:
+        if _infrastructure_error(error) or error.code == "IDEMPOTENCY_CONFLICT":
+            raise
+        _reject(current, command, actor, comment_id, error.code, str(error))
+        current["updated_at"] = now
+        return current
+    if command["op"] == "submit_bundle":
+        result["processed"][command["request_id"]]["raw_fingerprint"] = fingerprint
+    return result
+
+
+def _own_bot(comment):
+    user = comment.get("user") or {}
+    return user.get("type") == "Bot" and user.get("login") == CONTROLLER_LOGIN
+
+
+def _notification(record, comments, api, now):
+    if record["status"] != "submitted" or not record.get("result"):
+        return
+    result = record["result"]
+    receipts = record.setdefault("result_notifications", {})
+    if result["id"] in receipts:
+        return
+    marker = f"<!-- taskboard:result:v2:{result['id']} -->"
+    existing = next((comment for comment in comments if _own_bot(comment) and
+                     (comment.get("body") or "").startswith(marker + "\n")), None)
+    if existing is None:
+        lines = [marker, f"@{record['author']} @{record['attempt']['actor']} 成果已提交，待发起者验收。",
+                 f"成果编号：`{result['id']}`"]
+        for artifact in result["manifest"]["artifacts"]:
+            label = re.sub(r"([\\`*_{}\[\]()#+.!|<>])", r"\\\1", artifact["name"]).replace("@", "&#64;")
+            uri = artifact["uri"].replace("<", "%3C").replace(">", "%3E")
+            lines.append(f"- [{label}](<{uri}>)")
+        lines.append("发起者可在原 Agent 会话中读取成果并决定是否验收；提交不等于自动合并或验收。")
+        existing = api.comment(record["number"], "\n\n".join(lines))
+        _require(_own_bot(existing), "Notification response must identify the controller bot.",
+                 "GITHUB_INVALID_RESPONSE")
+    _integer(existing.get("id"), "notification comment ID", minimum=1)
+    receipts[result["id"]] = {"comment_id": existing["id"], "notified_at": now}
 
 
 def reconcile(api, *, now=None, allowed_members=()):
@@ -42,16 +114,8 @@ def reconcile(api, *, now=None, allowed_members=()):
     now = int(time.time()) if now is None else int(now)
     state = api.read_state()
     before = copy.deepcopy(state)
-    permitted = {}
-    roster = {name.casefold() for name in allowed_members}
-
-    def authorized(login):
-        normalized = login.lower()
-        if normalized not in permitted:
-            permitted[normalized] = (
-                not roster or normalized in roster
-            ) and api.permission(login) in {"write", "maintain", "admin"}
-        return permitted[normalized]
+    # Legacy callers may still pass allowed_members; native GitHub Issue and
+    # comment access now authorizes participation without an application roster.
 
     projection = []
     known_ids = {
@@ -64,7 +128,7 @@ def reconcile(api, *, now=None, allowed_members=()):
             if "<!-- taskboard:task:v1 -->" not in (issue.get("body") or ""):
                 continue
             author = issue.get("user", {}).get("login", "")
-            if issue.get("user", {}).get("type") == "Bot" or not authorized(author):
+            if issue.get("user", {}).get("type") != "User" or not author:
                 continue
             try:
                 spec = parse_task_issue(issue["body"])
@@ -86,7 +150,7 @@ def reconcile(api, *, now=None, allowed_members=()):
                 command = parse_command(comment.get("body") or "")
                 if command is not None:
                     actor = comment.get("user", {}).get("login", "")
-                    if comment.get("updated_at") != comment.get("created_at"):
+                    if not comment.get("created_at") or comment.get("updated_at") != comment.get("created_at"):
                         _reject(
                             record,
                             command,
@@ -95,35 +159,40 @@ def reconcile(api, *, now=None, allowed_members=()):
                             "EDITED_COMMAND",
                             "命令评论已修改，请发送新的请求。",
                         )
-                    elif comment.get("user", {}).get("type") == "Bot" or not authorized(
-                        actor
-                    ):
+                    elif comment.get("user", {}).get("type") != "User" or not actor:
                         _reject(
                             record,
                             command,
                             actor,
                             comment_id,
                             "NOT_AUTHORIZED",
-                            "当前账号未被授权参与此看板。",
+                            "命令必须由 GitHub 已认证的用户账号发送。",
                         )
                     else:
-                        record = apply_command(
-                            record, command, actor=actor, comment_id=comment_id, now=now
+                        record = process_command(
+                            record, command, comments, api, actor=actor, comment_id=comment_id, now=now
                         )
             except ProtocolError as error:
-                if error.code.startswith("GITHUB_") or error.code == "GH_NOT_INSTALLED":
+                if _infrastructure_error(error):
                     # Infrastructure failure is not a business rejection. No
                     # cursor from this batch has been durably acknowledged.
                     raise
-                _reject(record, command, "", comment_id, error.code, str(error))
+                _reject(record, command, comment.get("user", {}).get("login", ""),
+                        comment_id, error.code, str(error))
             record["last_comment_id"] = comment_id
         state["tasks"][key] = record
         projection.append((issue, record, comments))
     if state != before:
         state["updated_at"] = now
         api.write_state(state)
+    canonical = copy.deepcopy(state)
     projection_errors = {}
+    notification_errors = {}
     for issue, record, comments in projection:
+        try:
+            _notification(record, comments, api, now)
+        except ProtocolError as error:
+            notification_errors[str(issue["number"])] = {"code": error.code, "message": str(error)}
         attempt = record.get("attempt")
         last = sorted(
             record.get("processed", {}).values(),
@@ -152,7 +221,7 @@ def reconcile(api, *, now=None, allowed_members=()):
             (
                 comment
                 for comment in comments
-                if comment.get("user", {}).get("login") == "github-actions[bot]"
+                if _own_bot(comment)
                 and (comment.get("body") or "").startswith(STATUS_MARKER)
             ),
             None,
@@ -173,9 +242,17 @@ def reconcile(api, *, now=None, allowed_members=()):
                 "code": error.code,
                 "message": str(error),
             }
-    if state.get("projection_errors", {}) != projection_errors:
-        state["projection_errors"] = projection_errors
-        api.write_state(state)
+    state["projection_errors"] = projection_errors
+    state["notification_errors"] = notification_errors
+    if state != canonical:
+        try:
+            api.write_state(state)
+        except ProtocolError as error:
+            if not _infrastructure_error(error):
+                raise
+            # Canonical transitions were already persisted. A notification or
+            # projection receipt can be recovered from the next native read.
+            state["projection_errors"]["state"] = {"code": error.code, "message": str(error)}
     return state
 
 
@@ -228,6 +305,7 @@ def build_site(state, repository, hostname, destination, *, source=Path("site"))
         + "\n"
     )
     (destination / ".nojekyll").touch()
+    build_download_assets(destination, Path(__file__).resolve().parent.parent)
     return destination
 
 
@@ -235,22 +313,14 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repo", required=True)
     parser.add_argument("--hostname", default="github.com")
-    parser.add_argument("--config", type=Path, default=Path(".github/taskboard.json"))
+    parser.add_argument("--config", type=Path, help=argparse.SUPPRESS)
     parser.add_argument("--output", type=Path, default=Path("build/site"))
     parser.add_argument("--publish-pages", action="store_true")
     parser.add_argument("--request-pages-build", action="store_true")
     options = parser.parse_args(argv)
     try:
-        config = (
-            json.loads(options.config.read_text()) if options.config.exists() else {}
-        )
-        allowed = config.get("allowed_members", [])
-        if not isinstance(allowed, list) or not all(
-            isinstance(name, str) for name in allowed
-        ):
-            raise ProtocolError("INVALID_POLICY", "allowed_members 必须是账号名数组。")
         api = GitHub(options.repo, options.hostname)
-        state = reconcile(api, allowed_members=allowed)
+        state = reconcile(api)
         build_site(state, api.repo, api.hostname, options.output)
         if options.publish_pages:
             api.publish_directory(options.output)
@@ -263,6 +333,7 @@ def main(argv=None):
                     "site": str(options.output),
                     "pages_published": options.publish_pages,
                     "projection_errors": state.get("projection_errors", {}),
+                    "notification_errors": state.get("notification_errors", {}),
                 },
                 ensure_ascii=False,
             )

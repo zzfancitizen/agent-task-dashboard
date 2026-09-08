@@ -35,12 +35,6 @@ def _json_file(path: str | Path, limit: int = 48 * 1024) -> dict:
         raise ProtocolError('INVALID_JSON', 'Input must be a UTF-8 JSON object.') from exc
 
 
-def _require_write(client: GitHub) -> None:
-    actor = client.user()
-    if client.permission(actor) not in {'write', 'maintain', 'admin'}:
-        raise ProtocolError('WRITE_PERMISSION_REQUIRED', 'This action requires write, maintain, or admin permission on the configured task board. Read-only members cannot upload execution artifacts.')
-
-
 def _execution_report(text: str) -> dict:
     try:
         value = json.loads(text)
@@ -82,7 +76,7 @@ def _post(store: LocalStore, client: GitHub, record: dict, op: str, **fields) ->
     fingerprint = hashlib.sha256(json.dumps([record['number'], client.user().casefold(), record['attempt_count'], payload], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
     def reserve(data):
         if fingerprint not in data['requests']:
-            data['requests'][fingerprint] = {'command': {**payload, 'request_id': str(uuid.uuid4())}, 'phase': 'reserved'}
+            data['requests'][fingerprint] = {'issue': record['number'], 'command': {**payload, 'request_id': str(uuid.uuid4())}, 'phase': 'reserved'}
         return data['requests'][fingerprint]
     pending = store.update(reserve)
     command = pending['command']
@@ -120,12 +114,16 @@ def _wait(client: GitHub, issue: int, request: dict, seconds: float, *, required
         time.sleep(min(2, remaining))
 
 
-def _claim(store: LocalStore, client: GitHub, issue: int, wait: float, *, required: bool) -> dict | None:
+def _claim(store: LocalStore, client: GitHub, issue: int, wait: float, *, required: bool, expected_attempt_count: int | None = None) -> dict | None:
     record = _record(client, issue, allow_unconfirmed=True)
     actor = client.user()
     attempt = record.get('attempt')
     if attempt and attempt['actor'].casefold() == actor.casefold() and record['status'] in {'claimed', 'running'} and attempt['expires_at'] > int(time.time()):
+        if expected_attempt_count is not None and record['attempt_count'] != expected_attempt_count:
+            raise ProtocolError('ATTEMPT_CHANGED', 'The execution attempt changed. Automatic retry cannot start a different attempt.')
         return record
+    if expected_attempt_count is not None and record['attempt_count'] + 1 != expected_attempt_count:
+        raise ProtocolError('ATTEMPT_CHANGED', 'The original attempt ended or changed. Reopen the task to explicitly start another attempt.')
     command = _post(store, client, record, 'claim')
     return _wait(client, issue, command, wait, required=required)
 
@@ -212,44 +210,86 @@ def _artifacts(task: dict, workspace: Path, directory: Path, summary: str, check
     return files
 
 
+def _confirmed_submission(store: LocalStore, record: dict, attempt_id: str, job: dict) -> Path | None:
+    if record['status'] not in {'submitted', 'accepted'} or not record.get('result'):
+        return None
+    manifest = validate_result(record['result']['manifest'], record['spec'], attempt_id)
+    if job.get('issue') != record['number']:
+        raise ProtocolError('RESULT_CONFLICT', 'The confirmed result belongs to another local task.')
+    report = job.get('bundle_report')
+    if report:
+        fields = ('schema_version', 'task_id', 'task_digest', 'base_commit', 'summary', 'assumptions', 'unresolved', 'usage')
+        matching = all(manifest[key] == report[key] for key in fields)
+        matching = matching and {item['name']: item['sha256'] for item in manifest['artifacts']} == {item['name']: item['sha256'] for item in report['artifacts']}
+        matching = matching and [{'argv': item['argv'], 'exit_code': item['exit_code']} for item in manifest['verification']] == report['verification']
+    else:
+        matching = bool(job.get('result_file')) and _json_file(job['result_file']) == manifest
+    if not matching:
+        raise ProtocolError('RESULT_CONFLICT', 'The confirmed result differs from this runner\'s saved submission. Inspect it before continuing.')
+    result_file = Path(job['directory']) / 'result.json'
+    atomic_json(result_file, manifest)
+    _save_run(store, attempt_id, phase='submitted', result_file=str(result_file))
+    return result_file
+
+
 def _upload_submit(store: LocalStore, client: GitHub, record: dict, attempt: dict, job: dict, wait: float) -> None:
+    from .transfers import prepare_bundle, post_bundle_chunks
+
+    current = _record(client, record['number'])
+    result_file = _confirmed_submission(store, current, attempt['id'], job)
+    if result_file:
+        print(f'Result already confirmed: {result_file}')
+        return
+    if _attempt(current, client.user())['id'] != attempt['id']:
+        raise ProtocolError('STALE_ATTEMPT', 'The execution attempt changed before upload. No artifact comments were posted.')
     task = record['spec']
     files = {name: Path(path) for name, path in job['files'].items()}
     for file in files.values():
         regular_path(file)
-    urls = client.upload_artifacts(f'taskboard-{task["task_id"]}-{attempt["id"]}', list(files.values()))
-    manifest = {
-        'schema_version': 1, 'task_id': task['task_id'], 'revision': task['revision'], 'task_digest': record['digest'],
-        'attempt_id': attempt['id'], 'base_commit': task['source']['base_commit'], 'summary': job['summary'][:8000],
-        'artifacts': [{'name': name, 'uri': urls[file.name], 'sha256': hashlib.sha256(file.read_bytes()).hexdigest()} for name, file in files.items()],
-        'verification': [{'argv': check['argv'], 'exit_code': check['exit_code'], 'evidence': urls[files['verification.json'].name]} for check in job['checks']],
-        'assumptions': job.get('assumptions', []), 'unresolved': job.get('unresolved', ['Execution report did not capture structured unresolved items; inspect summary.md.']), 'usage': job.get('usage'),
-    }
-    validate_result(manifest, task, attempt['id'])
-    result_file = Path(job['directory']) / 'result.json'
-    atomic_json(result_file, manifest)
-    _save_run(store, attempt['id'], phase='uploaded', result_file=str(result_file))
-    current = _record(client, record['number'])
-    _attempt(current, client.user())
-    command = _post(store, client, current, 'submit', attempt_id=attempt['id'], result=manifest)
+    bundle = prepare_bundle(task, attempt['id'], files, {
+        'summary': job['summary'][:8000], 'checks': job['checks'],
+        'assumptions': job.get('assumptions', []),
+        'unresolved': job.get('unresolved', ['Execution report did not capture structured unresolved items; inspect summary.md.']),
+        'usage': job.get('usage'),
+    })
+    if job.get('bundle_sha256') and (job['bundle_sha256'] != bundle['sha256'] or job.get('bundle_report') != bundle['report']):
+        raise ProtocolError('RESULT_CONFLICT', 'Saved artifacts changed after submission began. A retry cannot replace an uncertain result.')
+    job = _save_run(store, attempt['id'], bundle_sha256=bundle['sha256'], bundle_report=bundle['report'])
+    upload = post_bundle_chunks(client, record['number'], task, attempt['id'], bundle)
+    command = _post(store, client, current, 'submit_bundle', attempt_id=attempt['id'], upload=upload, report=bundle['report'])
     confirmed = _wait(client, record['number'], command, wait, required=False)
-    _save_run(store, attempt['id'], phase='submitted' if confirmed else 'submit_pending')
-    print(f'Result {"submitted" if confirmed else "queued for confirmation"}: {result_file}')
+    if confirmed:
+        result_file = _confirmed_submission(store, confirmed, attempt['id'], job)
+        if result_file is None:
+            raise ProtocolError('RESULT_PENDING', 'Actions processed the request but its result is not yet visible. Retry to check confirmation.')
+        print(f'Result submitted: {result_file}')
+    else:
+        _save_run(store, attempt['id'], phase='submit_pending')
+        print(f'Result queued for Actions confirmation. Local artifacts: {job["directory"]}')
 
 
 def _run_task(args, store: LocalStore, client: GitHub, config: dict) -> None:
     with store.exclusive(f'run:{args.issue}'):
         preview = _record(client, args.issue, allow_unconfirmed=True)
+        expected_count = args.expected_attempt_count
+        if args.expected_task_digest and preview['digest'] != args.expected_task_digest:
+            raise ProtocolError('TASK_CHANGED', 'The downloaded task no longer matches the confirmed task. Download it again from the board.')
+        if expected_count is not None and preview['attempt_count'] not in {expected_count - 1, expected_count}:
+            raise ProtocolError('ATTEMPT_CHANGED', 'The execution generation changed. Automatic retry stopped before execution.')
         if args.agent not in preview['spec']['execution']['compatible_agents']:
             raise ProtocolError('INCOMPATIBLE_AGENT', 'This task does not permit the selected agent; no attempt was claimed.')
         if preview.get('result') and preview['status'] in {'submitted', 'accepted'}:
             returned = preview['result']['manifest']
             saved = store.data()['runs'].get(returned['attempt_id'])
-            if saved and saved.get('result_file') and _json_file(saved['result_file']) == returned:
-                _save_run(store, returned['attempt_id'], phase='submitted')
-                print(f'Result already confirmed: {saved["result_file"]}')
+            if saved:
+                result_file = _confirmed_submission(store, preview, returned['attempt_id'], saved)
+                print(f'Result already confirmed: {result_file}')
                 return
-        record = _claim(store, client, args.issue, args.wait, required=True)
+        record = _claim(store, client, args.issue, args.wait, required=True, expected_attempt_count=expected_count)
+        if expected_count is not None and record['attempt_count'] != expected_count:
+            raise ProtocolError('ATTEMPT_CHANGED', 'Another attempt intervened while Actions confirmed the request. No model was started.')
+        if args.expected_task_digest and record['digest'] != args.expected_task_digest:
+            raise ProtocolError('TASK_CHANGED', 'Task content changed while the claim was pending. No model was started.')
         actor = client.user()
         attempt = _attempt(record, actor)
         task = record['spec']
@@ -280,7 +320,8 @@ def _run_task(args, store: LocalStore, client: GitHub, config: dict) -> None:
                 _save_run(store, attempt['id'], phase='start_pending')
             command = _post(store, client, record, 'start', attempt_id=attempt['id'])
             running = _wait(client, args.issue, command, args.wait, required=True)
-            _attempt(running, actor)
+            if _attempt(running, actor)['id'] != attempt['id'] or running['attempt_count'] != record['attempt_count'] or running['digest'] != record['digest']:
+                raise ProtocolError('STALE_ATTEMPT', 'The execution attempt changed while start was confirmed. No model was started.')
             _save_run(store, attempt['id'], phase='running')
             deadline = time.monotonic() + task['execution']['timeout_seconds']
             prompt = task['prompt'] + '\n\nTaskboard execution constraints:\n' + json.dumps({'write_paths': task['source']['write_paths'], 'resources': task['resources'], 'acceptance': task['acceptance']}, ensure_ascii=False) + '\nOnly edit permitted write_paths. Resources are read-only. The host exports changes.patch, summary.md and verification.json outside this checkout; do not create those three files here. The host runs acceptance commands after you finish. Return your final response as a JSON object with exactly summary (string), assumptions (array of strings), and unresolved (array of strings). State limitations honestly; an empty unresolved array means you are explicitly reporting none.'
@@ -571,6 +612,24 @@ def parser() -> argparse.ArgumentParser:
     publish.add_argument('--session')
     publish.add_argument('--agent', choices=['codex', 'claude'])
     publish.add_argument('--workspace')
+    propose = add('propose', 'Prepare a complete local delegation proposal for the user to review')
+    propose.add_argument('--workspace', required=True)
+    propose.add_argument('--goal-file', required=True, help='UTF-8 JSON with goal, context, acceptance, and delegation_reason')
+    propose.add_argument('--title', required=True)
+    propose.add_argument('--provider', choices=['codex', 'claude'], required=True)
+    propose.add_argument('--session', required=True, help='Exact original provider session UUID supplied by its hook')
+    propose.add_argument('--resource', action='append', default=[])
+    propose.add_argument('--write-path', action='append', default=[])
+    propose.add_argument('--command-json', action='append', default=[], help='One JSON argv array for each acceptance command')
+    propose.add_argument('--size', choices=['S', 'M', 'L'], default='M')
+    propose.add_argument('--category', choices=['code', 'docs', 'research'], default='code')
+    proposal_publish = add('publish-proposal', 'Publish a reviewed proposal only after the user agrees')
+    proposal_publish.add_argument('proposal')
+    proposal_publish.add_argument('--approved', action='store_true', help='The user explicitly agreed to publish this exact proposal')
+    for name, help_text in [('install-integration', 'Install the publisher skill and session hooks into a project'), ('hook', 'Handle a native provider event supplied on stdin')]:
+        integration = add(name, help_text)
+        integration.add_argument('--provider', choices=['codex', 'claude'], required=True)
+        integration.add_argument('--project', required=True)
     claim = add('claim', 'Request ownership and optionally wait for Actions confirmation')
     claim.add_argument('issue', type=_positive)
     claim.add_argument('--wait', type=_wait_seconds, default=0)
@@ -578,6 +637,8 @@ def parser() -> argparse.ArgumentParser:
     run.add_argument('issue', type=_positive)
     run.add_argument('--agent', choices=['codex', 'claude'], required=True)
     run.add_argument('--wait', type=_wait_seconds, default=180)
+    run.add_argument('--expected-attempt-count', type=_positive, help='Fence wizard retries to one confirmed execution generation')
+    run.add_argument('--expected-task-digest', help='Require the exact downloaded task digest before executing')
     submit = add('submit', 'Submit an already-uploaded result manifest for your current attempt')
     submit.add_argument('issue', type=_positive)
     submit.add_argument('file')
@@ -614,14 +675,28 @@ def main(argv=None) -> int:
         if args.repo and repository_name(args.repo) != config['repo'] or args.hostname and hostname_name(args.hostname) != config['hostname']:
             raise ProtocolError('CONFIG_CONFLICT', 'Command repository and host must match this --home configuration.')
         client = GitHub(config['repo'], config['hostname'])
-        if args.command in {'publish', 'claim', 'run', 'submit', 'accept', 'reject', 'release', 'cancel'}:
-            _require_write(client)
         if args.command == 'start':
             if args.timeout > 14400:
                 raise ProtocolError('INVALID_TIMEOUT', 'Managed origin timeout must be at most 14400 seconds.')
             _start(args, store, config)
         elif args.command == 'publish':
             _publish(args, store, client, config)
+        elif args.command == 'propose':
+            from .publishing import prepare_proposal
+            proposal = prepare_proposal(store, workspace=Path(args.workspace), goal_file=Path(args.goal_file), title=args.title, provider=args.provider, session=args.session, resource_paths=args.resource, write_paths=args.write_path, commands=[json.loads(value) for value in args.command_json], size=args.size, category=args.category)
+            print(json.dumps(proposal, ensure_ascii=False, indent=2))
+        elif args.command == 'publish-proposal':
+            from .publishing import publish_proposal
+            print(json.dumps(publish_proposal(store, client, args.proposal, approved=args.approved), ensure_ascii=False, indent=2))
+        elif args.command == 'install-integration':
+            from .integration import install_integration
+            print(json.dumps(install_integration(args.provider, Path(args.project), store), ensure_ascii=False, indent=2))
+        elif args.command == 'hook':
+            from .integration import handle_hook
+            event = sys.stdin.read(65537)
+            if len(event.encode('utf-8')) > 65536:
+                raise ProtocolError('PAYLOAD_TOO_LARGE', 'Hook event exceeds 64 KiB.')
+            print(json.dumps(handle_hook(args.provider, Path(args.project), store, json.loads(event)), ensure_ascii=False))
         elif args.command == 'claim':
             result = _claim(store, client, args.issue, args.wait, required=False)
             print('Claim confirmed.' if result else 'Claim queued. Wait for Actions confirmation before execution.')

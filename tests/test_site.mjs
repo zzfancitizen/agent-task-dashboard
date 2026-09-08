@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   validateHostname, validateRepository, githubURL, taskRunURL, taskCommand,
-  safeHTTPS, resourceURL, filterTasks, taskCounts, normalizeSnapshot, buildTaskExport,
+  safeHTTPS, resourceURL, filterTasks, taskCounts, normalizeSnapshot, buildTaskExport, taskLeaderboards, executionDuration,
 } from '../site/model.mjs';
 
 const snapshot = { schema_version: 1, repository: 'acme/task-board', hostname: 'github.acme.internal', generated_at: '2026-09-08T09:00:00Z', demo: false, tasks: [] };
@@ -113,4 +113,53 @@ test('launcher URL carries the chosen compatible provider and rejects unknown pr
   assert.equal(url.searchParams.get('agent'), 'claude');
   assert.equal(new URL(taskRunURL(snapshot, 42)).searchParams.has('agent'), false);
   assert.throws(() => taskRunURL(snapshot, 42, 'unknown'), /Agent/);
+});
+
+const rankedTask = (id, status, author, actor = null, number = id) => ({
+  ...makeTask(number, status, `Task ${id}`, ['codex']), author,
+  spec: { ...makeTask(number, status, '', ['codex']).spec, task_id: `00000000-0000-4000-8000-${String(id).padStart(12, '0')}`, revision: 1 },
+  attempt: actor ? { actor } : null,
+});
+
+test('leaderboards count unique published tasks and only accepted work for the executor', () => {
+  const records = [
+    rankedTask(1, 'open', 'Ada'), rankedTask(2, 'running', 'ADA', 'Bex'),
+    rankedTask(3, 'submitted', 'Bo', 'Bex'), rankedTask(4, 'accepted', 'Bo', 'BEX'),
+    rankedTask(5, 'accepted', 'Ci', 'ada'), rankedTask(6, 'cancelled', 'Ci', 'Bex'),
+    rankedTask(7, 'failed', 'Di', 'Bex'), rankedTask(8, 'claimed', 'Di', 'Bex'),
+    rankedTask(4, 'accepted', 'Bo', 'BEX', 44),
+  ];
+  assert.deepEqual(taskLeaderboards({ ...snapshot, tasks: records }), {
+    published: [{ actor: 'ada', count: 2 }, { actor: 'bo', count: 2 }, { actor: 'di', count: 2 }, { actor: 'ci', count: 1 }],
+    completed: [{ actor: 'ada', count: 1 }, { actor: 'bex', count: 1 }],
+  });
+  assert.equal(filterTasks(records, { status: 'open' }).length, 1);
+  assert.equal(taskLeaderboards({ ...snapshot, tasks: records }).published[0].count, 2);
+});
+
+test('rankings use current revision, deterministic ties, and do not fabricate absent identity or demo results', () => {
+  const old = rankedTask(1, 'accepted', 'Ada', 'Bex');
+  const cancelled = { ...rankedTask(1, 'cancelled', 'Ada', 'Bex', 11), spec: { ...old.spec, revision: 2 } };
+  const missingActor = rankedTask(2, 'accepted', 'ci');
+  const records = [old, cancelled, missingActor, rankedTask(3, 'open', 'BO'), rankedTask(4, 'open', 'bo')];
+  const expected = { published: [{ actor: 'bo', count: 2 }, { actor: 'ci', count: 1 }], completed: [] };
+  assert.deepEqual(taskLeaderboards({ ...snapshot, tasks: records }), expected);
+  assert.deepEqual(taskLeaderboards({ ...snapshot, tasks: records.toReversed() }), expected);
+  assert.deepEqual(taskLeaderboards({ ...snapshot, tasks: records, demo: true }), { published: [], completed: [] });
+  assert.deepEqual(taskLeaderboards(snapshot), { published: [], completed: [] });
+  assert.deepEqual(taskLeaderboards({ ...snapshot, tasks: [makeTask(9, 'accepted', 'missing task id', ['codex'])] }), { published: [], completed: [] });
+  assert.deepEqual(taskLeaderboards({ ...snapshot, tasks: [{ ...old, spec: { ...old.spec, task_id: [old.spec.task_id] } }] }), { published: [], completed: [] });
+});
+
+test('rankings show ten contributors with stable alphabetical order for equal counts', () => {
+  const records = Array.from({ length: 12 }, (_, i) => rankedTask(i + 1, 'accepted', `user-${String(i).padStart(2, '0')}`, `user-${String(i).padStart(2, '0')}`));
+  const ranks = taskLeaderboards({ ...snapshot, tasks: records.toReversed() });
+  assert.equal(ranks.published.length, 10);
+  assert.deepEqual(ranks.completed.map(entry => entry.actor), ['user-00', 'user-01', 'user-02', 'user-03', 'user-04', 'user-05', 'user-06', 'user-07', 'user-08', 'user-09']);
+});
+
+test('execution duration shows sub-minute timeouts without rounding them to zero', () => {
+  for (const [seconds, label] of [[10, '10 秒'], [59, '59 秒'], [60, '1 分钟'], [90, '1 分 30 秒'], [1800, '30 分钟'], [0, '未指定'], [undefined, '未指定']]) {
+    assert.equal(executionDuration(seconds), label);
+  }
 });

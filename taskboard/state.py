@@ -75,13 +75,16 @@ def apply_command(record, command, *, actor, comment_id, now):
 
     Identical request replays preserve the original outcome and timestamp.
     Conflicting IDs raise without replacing that durable first outcome.
-    GitHub actor identity and repository permission checks belong to the caller.
+    GitHub actor identity validation belongs to the caller.
     """
     _clock(now)
     _check_content(record)
     _text(actor, "actor")
     _integer(comment_id, "comment_id", minimum=1)
     command = _validate_command(command)
+    _require(command["op"] != "submit_bundle",
+             "Artifact bundles must be validated by the controller before applying state.",
+             "BUNDLE_NOT_RESOLVED")
     fingerprint = hashlib.sha256(_canonical_json({
         "actor": actor.casefold(), "command": command,
     }).encode("utf-8")).hexdigest()

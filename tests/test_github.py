@@ -1,6 +1,7 @@
 import base64
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,8 +12,15 @@ from taskboard.protocol import ProtocolError
 
 
 class GitHubTests(unittest.TestCase):
+    def test_utf8_transport_does_not_depend_on_windows_ansi_locale(self):
+        payload = json.dumps({'message': '委托完成 ✓'}, ensure_ascii=False)
+        script = 'import sys;sys.stdout.buffer.write(sys.stdin.buffer.read())'
+        with patch('subprocess._text_encoding', return_value='cp936'):
+            returned = GitHub('team/board')._run([sys.executable, '-I', '-c', script], data=payload)
+        self.assertEqual(json.loads(returned), {'message': '委托完成 ✓'})
+
     def test_enterprise_api_uses_hostname_and_json_stdin(self):
-        response = subprocess.CompletedProcess([], 0, '{"id": 4}', "")
+        response = subprocess.CompletedProcess([], 0, b'{"id": 4}', b'')
         with patch("subprocess.run", return_value=response) as run:
             result = GitHub("team/board", "git.corp.test").request(
                 "POST", "repos/team/board/issues", {"body": "$(touch nope)\n`literal`"}
@@ -38,13 +46,21 @@ class GitHubTests(unittest.TestCase):
 
     def test_error_does_not_echo_credentials_or_untrusted_stderr(self):
         failed = subprocess.CompletedProcess(
-            [], 1, "", "Authorization: Bearer secret-value\nHTTP 403"
+            [], 1, b'', b'Authorization: Bearer secret-value\nHTTP 403'
         )
         with patch("subprocess.run", return_value=failed):
             with self.assertRaises(ProtocolError) as caught:
                 GitHub("team/board").request("GET", "user")
         self.assertNotIn("secret-value", str(caught.exception))
         self.assertEqual(caught.exception.code, "GITHUB_403")
+
+    def test_malformed_native_utf8_is_an_uncertain_response_in_the_caller(self):
+        for stdout, stderr, code in ((b'\xff', b'', 0), (b'', b'\xff', 1)):
+            with self.subTest(code=code), patch('subprocess.run', return_value=subprocess.CompletedProcess([], code, stdout, stderr)) as boundary:
+                with self.assertRaises(ProtocolError) as caught:
+                    GitHub('team/board').request('POST', 'repos/team/board/issues', {'body': '委托'})
+                self.assertEqual(caught.exception.code, 'GITHUB_OUTCOME_UNKNOWN')
+                self.assertFalse(boundary.call_args.kwargs.get('text', False))
 
     def test_paginated_comments_are_not_dropped(self):
         client = GitHub("team/board")

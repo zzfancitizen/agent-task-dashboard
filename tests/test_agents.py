@@ -2,12 +2,13 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import tempfile
 import time
 import unittest
 from unittest.mock import patch
 
-from taskboard.agents import provider_argv, run_agent, run_checks
+from taskboard.agents import execute, provider_argv, run_agent, run_checks
 from taskboard.protocol import ProtocolError
 
 
@@ -131,6 +132,24 @@ class AgentTests(unittest.TestCase):
         with patch.dict(os.environ, {'CLI_TEST_MODE': 'watch', 'CLI_TEST_MARKER': str(marker)}):
             run_agent('codex', 'task', self.workspace, self.root / 'output', 5, on_event=event_received)
         self.assertEqual(marker.read_text(), 'cf20e605-88b8-443f-87a1-50c027e984e1')
+
+    def test_streaming_does_not_require_selectable_pipe_handles(self):
+        marker = self.root / 'observed-portably'
+        def event_received(event):
+            if event.get('type') == 'thread.started':
+                marker.write_text(event['thread_id'])
+        with patch('selectors.DefaultSelector', side_effect=OSError('Windows pipe handles are not selectable')), patch.dict(os.environ, {'CLI_TEST_MODE': 'watch', 'CLI_TEST_MARKER': str(marker)}):
+            outcome = run_agent('codex', 'task', self.workspace, self.root / 'portable', 5, on_event=event_received)
+        self.assertEqual(outcome.session_id, marker.read_text())
+
+    def test_event_callback_failure_stops_tree_and_keeps_written_evidence(self):
+        def refuse(event):
+            raise ProtocolError('SESSION_MISMATCH', 'test refusal')
+        code = 'import json,time; print(json.dumps({"type":"thread.started"}),flush=True);time.sleep(10)'
+        with self.assertRaises(ProtocolError) as caught:
+            execute([sys.executable, '-c', code], self.workspace, self.root / 'callback.out', self.root / 'callback.err', 2, on_event=refuse)
+        self.assertEqual(caught.exception.code, 'SESSION_MISMATCH')
+        self.assertIn('thread.started', (self.root / 'callback.out').read_text())
 
     def test_verification_records_real_exit_codes_without_shell_interpolation(self):
         import sys

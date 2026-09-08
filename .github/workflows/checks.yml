@@ -15,8 +15,8 @@ jobs:
       - name: Python behavior and syntax
         run: |
           python3 -m unittest discover -s tests -v
-          python3 -m compileall -q taskboard scripts
+          python3 -m compileall -q taskboard scripts launchers
       - name: Frontend behavior
-        run: node --test tests/test_site.mjs
+        run: node --test tests/test_*.mjs
       - name: Whitespace
         run: git diff --check

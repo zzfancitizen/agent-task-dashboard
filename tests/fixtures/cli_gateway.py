@@ -7,7 +7,8 @@ import time
 from urllib.parse import urlsplit
 
 from taskboard.protocol import ProtocolError, parse_command, parse_task_issue
-from taskboard.state import new_task, apply_command
+from taskboard.state import new_task
+from taskboard.github import GitHub
 
 
 class Gateway:
@@ -29,10 +30,29 @@ class Gateway:
         self.uploads = 0
         self.fail_upload_at = None
         self.lose_op = None
+        self.controller_depth = 0
+
+    def process_pending(self, number):
+        from taskboard.controller import process_command
+        self.controller_depth += 1
+        try:
+            rows = [row for row in self.comments if row.get('issue_number', number) == number]
+            for comment in rows:
+                try:
+                    command = parse_command(comment['body'])
+                except ProtocolError:
+                    continue
+                if command is None:
+                    continue
+                self.state['tasks'][str(number)] = process_command(self.state['tasks'][str(number)], command, rows, GitHub(self.repo, self.hostname), actor=comment['user']['login'], comment_id=comment['id'], now=int(time.time()))
+        finally:
+            self.controller_depth -= 1
 
     def run(self, argv, *, data=None, binary=False):
         self.operations.append(list(argv))
         if argv[:3] == ['gh', 'release', 'upload']:
+            if self.permission == 'read' and not self.controller_depth:
+                raise ProtocolError('GITHUB_403', 'A read-only participant cannot upload Releases directly.')
             tag, file = argv[3], Path(argv[4])
             self.uploads += 1
             if self.uploads == self.fail_upload_at:
@@ -70,20 +90,27 @@ class Gateway:
             number = int(parts[4])
             if len(parts) == 6 and parts[5] == 'comments':
                 if method == 'POST':
-                    comment = {'id': len(self.comments) + 1, 'body': body['body'], 'user': {'login': self.actor}}
+                    comment = {'id': len(self.comments) + 1, 'issue_number': number, 'body': body['body'], 'user': {'login': self.actor, 'type': 'User'}, 'created_at': '2026-09-08T00:00:00Z', 'updated_at': '2026-09-08T00:00:00Z'}
                     self.comments.append(comment)
-                    if not self.delay and parse_command(body['body'])['op'] != self.delay_op:
-                        self.state['tasks'][str(number)] = apply_command(self.state['tasks'][str(number)], parse_command(body['body']), actor=self.actor, comment_id=comment['id'], now=int(time.time()))
-                    if self.lose_comment or parse_command(body['body'])['op'] == self.lose_op:
+                    try:
+                        command = parse_command(body['body'])
+                        op = command['op'] if command else None
+                    except ProtocolError:
+                        op = None
+                    if op and not self.delay and op != self.delay_op:
+                        self.process_pending(number)
+                    if self.lose_comment or op is not None and op == self.lose_op:
                         self.lose_comment = False
                         self.lose_op = None
                         raise ProtocolError('GITHUB_OUTCOME_UNKNOWN', 'Fixture lost comment response')
                     result = comment
                 else:
-                    result = self.comments
+                    result = [row for row in self.comments if row.get('issue_number', number) == number]
             else:
                 result = self.issue_rows[number - 1]
         elif path == base + '/releases' and method == 'POST':
+            if self.permission == 'read' and not self.controller_depth:
+                raise ProtocolError('GITHUB_403', 'A read-only participant cannot create Releases directly.')
             result = {'id': len(self.releases) + 1, 'tag_name': body['tag_name'], 'assets': []}
             self.releases[body['tag_name']] = result
         elif path.startswith(base + '/releases/tags/'):

@@ -80,7 +80,81 @@ def result_fixture(task=None, attempt_id="d9ec477b-0a1c-4427-8603-2c031ee0821d")
     }
 
 
+def bundle_command_fixture():
+    task = task_fixture()
+    return {
+        "op": "submit_bundle", "request_id": str(uuid.uuid4()), "revision": 1,
+        "attempt_id": "d9ec477b-0a1c-4427-8603-2c031ee0821d",
+        "upload": {"id": str(uuid.uuid4()), "sha256": "e" * 64, "bytes": 20,
+                   "comment_ids": [10]},
+        "report": {
+            "schema_version": 1, "task_id": task["task_id"],
+            "task_digest": task_digest(task), "base_commit": "a" * 40,
+            "summary": "Completed.", "assumptions": [], "unresolved": [], "usage": None,
+            "artifacts": [{"name": "summary.md", "sha256": "f" * 64, "bytes": 3}],
+            "verification": [],
+        },
+    }
+
+
 class ProtocolTests(unittest.TestCase):
+    def test_bundle_command_roundtrip_preserves_report_without_release_write_access(self):
+        command = bundle_command_fixture()
+        try:
+            parsed = parse_command(format_command(command))
+        except ProtocolError as error:
+            self.fail(f"A valid bundle command must be supported: {error}")
+        self.assertEqual(parsed, command)
+
+    def test_bundle_descriptor_rejects_excess_duplicates_and_private_metadata(self):
+        mutations = (
+            ("upload", "bytes", 1024 * 1024 + 1),
+            ("upload", "comment_ids", [10, 10]),
+            ("upload", "comment_ids", list(range(1, 37))),
+            ("upload", "comment_ids", [True]),
+            ("report", "usage", {"provider": {"session_id": "private"}}),
+            ("report", "verification", [{"argv": ["python3"], "exit_code": True}]),
+        )
+        for section, key, value in mutations:
+            with self.subTest(section=section, key=key):
+                command = bundle_command_fixture()
+                command[section][key] = value
+                with self.assertRaises(ProtocolError):
+                    format_command(command)
+
+    def test_bundle_and_legacy_result_reject_unicode_aliases_and_parent_collisions(self):
+        for names in (("caf\u00e9.txt", "cafe\u0301.txt"),
+                      ("caf\u00e9", "cafe\u0301/child"),
+                      ("Folder", "folder/file.txt")):
+            with self.subTest(names=names):
+                command = bundle_command_fixture()
+                command["report"]["artifacts"] = [
+                    {"name": name, "sha256": str(index + 1) * 64, "bytes": 1}
+                    for index, name in enumerate(names)
+                ]
+                with self.assertRaises(ProtocolError):
+                    format_command(command)
+                result = result_fixture()
+                result["artifacts"].extend({
+                    "name": name, "sha256": str(index + 1) * 64,
+                    "uri": "https://git.example.internal/org/project/releases/download/attempt/file" + str(index),
+                } for index, name in enumerate(names))
+                with self.assertRaises(ProtocolError):
+                    validate_result(result, task_fixture(), result["attempt_id"])
+
+    def test_task_resource_destinations_and_required_outputs_cannot_alias(self):
+        task = task_fixture()
+        task["resources"][0]["destination"] = "resources/caf\u00e9.md"
+        other = copy.deepcopy(task["resources"][0])
+        other["destination"] = "resources/cafe\u0301.md"
+        task["resources"].append(other)
+        with self.assertRaises(ProtocolError):
+            validate_task(task)
+        task = task_fixture()
+        task["acceptance"]["required_outputs"] = ["caf\u00e9.md", "cafe\u0301.md"]
+        with self.assertRaises(ProtocolError):
+            validate_task(task)
+
     def test_task_roundtrip_preserves_enterprise_repository_and_unicode(self):
         task = task_fixture()
         body = format_task_issue(task)
@@ -166,6 +240,15 @@ class ProtocolTests(unittest.TestCase):
         task["source"]["write_paths"] = ["../"]
         with self.assertRaises(ProtocolError):
             validate_task(task)
+
+    def test_task_paths_reject_windows_drive_ads_devices_and_aliases(self):
+        for path in ("src/C:foo", "src/x:stream", "NUL", "aux.txt", "src/COM1.log",
+                     "src/con.txt", "src/name.", "src/name ", "src/LPT9"):
+            with self.subTest(path=path):
+                task = task_fixture()
+                task["acceptance"]["required_outputs"] = [path]
+                with self.assertRaises(ProtocolError):
+                    validate_task(task)
 
     def test_repository_urls_cannot_embed_credentials_or_change_protocol(self):
         for url in (

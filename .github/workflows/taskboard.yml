@@ -14,7 +14,12 @@ on:
       - 'taskboard/**'
       - 'site/**'
       - 'scripts/**'
-      - '.github/taskboard.json'
+      - 'bin/**'
+      - 'launchers/**'
+      - 'integrations/**'
+      - 'resources/**'
+      - 'docs/examples/**'
+      - 'README*.md'
       - '.github/workflows/taskboard.yml'
 
 # A later pending run may replace an earlier one. Requests remain in Issues:

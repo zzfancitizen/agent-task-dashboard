@@ -32,11 +32,11 @@ def repository_url(value: str, config: dict) -> str:
 
 
 def checked_path(root: Path, relative: str) -> Path:
-    if not isinstance(relative, str) or not relative or '\\' in relative or any(ord(char) < 32 or ord(char) == 127 for char in relative):
+    if not isinstance(relative, str) or not relative or any(char in relative for char in '\\:<>"|?*') or any(ord(char) < 32 or ord(char) == 127 for char in relative):
         raise ProtocolError('UNSAFE_PATH', 'Paths must be nonempty relative POSIX paths.')
     value = relative[:-1] if relative.endswith('/') else relative
     parts = value.split('/')
-    if any(part in {'', '.', '..'} or part.lower() == '.git' for part in parts) or PurePosixPath(value).is_absolute():
+    if any(part in {'', '.', '..'} or part.lower() == '.git' or part.endswith(('.', ' ')) or re.fullmatch(r'(?i)(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\..*)?', part) for part in parts) or PurePosixPath(value).is_absolute():
         raise ProtocolError('UNSAFE_PATH', f'Unsafe relative path: {relative!r}')
     path = root.joinpath(*parts)
     regular_path(path)
@@ -68,7 +68,7 @@ def _run(argv: list[str], *, env: dict | None = None, check: bool = True) -> sub
 
 
 def _git(root: Path, *argv: str, check: bool = True) -> subprocess.CompletedProcess:
-    return _run(['git', '-c', 'core.hooksPath=/dev/null', '-c', 'protocol.file.allow=never', '-c', 'core.fsmonitor=false', '-C', str(root), *argv], check=check)
+    return _run(['git', '-c', f'core.hooksPath={os.devnull}', '-c', 'protocol.file.allow=never', '-c', 'core.fsmonitor=false', '-C', str(root), *argv], check=check)
 
 
 def _clone(url: str, destination: Path, hostname: str) -> None:

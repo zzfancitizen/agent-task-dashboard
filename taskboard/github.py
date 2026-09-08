@@ -39,8 +39,12 @@ class GitHub:
     def _run(self, argv, *, data=None, binary=False):
         try:
             result = subprocess.run(
-                argv, input=data, text=not binary, capture_output=True, timeout=120
+                argv, input=data.encode('utf-8') if isinstance(data, str) else data, capture_output=True, timeout=120
             )
+            # Decode in the calling thread. Windows subprocess reader threads
+            # can otherwise swallow a text-decoding error and return None.
+            output = result.stdout if binary else result.stdout.decode('utf-8')
+            stderr = result.stderr.decode('utf-8')
         except FileNotFoundError as error:
             raise ProtocolError(
                 "GH_NOT_INSTALLED", "请先安装 GitHub CLI（gh）。"
@@ -49,15 +53,18 @@ class GitHub:
             raise ProtocolError(
                 "GITHUB_OUTCOME_UNKNOWN", "GitHub 请求超时；写入结果需要核对后重试。"
             ) from error
+        except UnicodeError as error:
+            raise ProtocolError(
+                "GITHUB_OUTCOME_UNKNOWN", "GitHub 返回的字符编码无法读取；请核对任务状态后重试。"
+            ) from error
         if result.returncode:
-            stderr = result.stderr.decode(errors="replace") if binary else result.stderr
             match = re.search(r"HTTP\s+(\d{3})", stderr or "")
             code = f"GITHUB_{match.group(1)}" if match else "GITHUB_REQUEST_FAILED"
             raise ProtocolError(
                 code,
                 f"GitHub 请求失败；请检查 {self.hostname} 的 gh 登录、权限和网络。",
             )
-        return result.stdout
+        return output
 
     def request(self, method: str, path: str, body: dict | None = None):
         if path.startswith(("/", "-")) or "://" in path:

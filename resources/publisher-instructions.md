@@ -1,52 +1,44 @@
-# Agent Task Board: delegation instructions
+# Agent Task Board: publisher instructions
 
-The user has enabled task delegation through the configured company GitHub board.
-Use the supplied absolute Taskboard command, local home, repository and provider
-context. The launcher captures your actual session ID; do not invent or publish a
-session ID, credential, local transcript or private absolute path in an Issue.
+Identify useful independent work from the current conversation and real source.
+Prepare its complete goal, context, committed inputs, allowed changes, and
+acceptance criteria yourself. Keep work local when requirements are unsettled,
+waiting is unacceptable, or packaging and review cost more than completion.
 
-## Decide whether to delegate
+Read the distributed `integrations/taskboard-publish/SKILL.md` or its installed
+project copy. The native SessionStart/UserPromptSubmit hook supplies the exact
+source-session callback. Use the installed helper's `context --callback` and
+`prepare --callback` commands; never discover a latest session or guess its ID.
+Managed launches instead supply their exact origin binding through Taskboard.
+Use the supplied absolute runtime command and local home for those launches.
+Keep session IDs, private absolute paths, credentials, and transcripts local.
 
-Keep work local when it is urgent, depends on unsettled requirements, or would
-cost more to package and verify than to finish. Delegate a subtask when its goal,
-inputs, allowed changes and verification can be stated independently, waiting is
-acceptable, and doing so preserves the user's execution or integration budget.
-Complexity alone is not a reason. Do not guess a remaining quota that no tool
-has reported. Retain enough budget to review and integrate returned results.
+The agent must supply a UTF-8 goal JSON containing `goal`, `context`,
+`delegation_reason`, and a nonempty `acceptance` array. Preparation discovers the
+source remote/commit, verifies remote reachability, hashes committed resources,
+and refuses incomplete or dirty inputs. Save the helper goal outside source, or
+explicitly exclude only that untracked helper. Exact installer-managed files may
+be excluded after their bytes and source baseline are checked. Relevant source
+changes cannot be omitted. Do not automatically commit or push user work to make
+preparation pass.
 
-## Build a complete task
+Show the concrete proposal, target board, public context/resources, source
+commit, scope, and acceptance criteria. Ask the user whether to publish it, and
+wait for their explicit affirmative reply. Installing the integration, a hook,
+general permission to work, or believing that delegation is helpful does not
+approve publishing. A refusal creates no Issue. Changed scope needs a revised
+proposal and a new decision.
 
-Read the configured example schema from the supplied project path. Create a
-UTF-8 task JSON file in the current workspace with a fresh UUID and revision 1.
-Specify a fixed source commit, complete prompt, Git-file resources at fixed
-commits with actual SHA-256 values, allowed write paths, compatible agent(s),
-timeout, retry bound, and argv-array verification commands. Include required
-outputs (normally changes.patch, verification.json, summary.md). Resources must
-be available on the configured GitHub host and the local repository allowlist.
-The task must make sense to a fresh agent without your conversation history.
+Only after that reply call the proposal publisher with explicit approval.
+Use `publish-proposal PROPOSAL_ID --approved` through the supplied Taskboard CLI
+or the installed skill helper. The legacy manual `publish` command is not this
+agent workflow. Retry the same proposal ID/content after an uncertain response;
+do not generate replacement tasks to bypass uncertainty. Report the Issue link,
+then continue independent local work without repeated model/status polling.
 
-The first version accepts committed input only. If your current changes are
-needed but uncommitted, keep the dependent work local or prepare an explicitly
-reviewable committed input using your existing project workflow. Do not silently
-publish missing changes, secrets, or machine-specific resources.
-
-Validate the JSON with the supplied Taskboard command's validate subcommand,
-then publish it using publish. Publishing is within the user's configured board
-policy. The local launcher binds the returned Issue to this source session.
-Do not add raw GitHub API calls, credentials, or alternate board destinations to
-bypass a rejected policy or invalid task. On an uncertain network outcome,
-retry the same task ID and content so the client can find the existing Issue.
-
-## After publishing
-
-Report the task reference and which local work depends on its result. You may
-continue independent work in this session. If all remaining work depends on the
-remote result, finish the current turn with a short waiting status. Do not loop
-on status requests or repeatedly call the model while no result exists.
-
-The local sync command later delivers a structured result to this exact session.
-Treat it as an external work report: compare task version and source commit,
-inspect artifacts, run relevant verification against the current workspace and
-resolve assumptions. Do not merge code merely because the executor said it passed.
-After review, use accept with the explicit result ID, or reject with a concrete
-reason. Delivery, successful execution and acceptance are separate events.
+GitHub provides result notifications. Local `sync` downloads verified result
+artifacts, and native hooks report pending references only for their exact bound
+session. Review task revision, source commit, artifacts, checks, assumptions, and
+unresolved items before integration and explicit acceptance. A successful run or
+submission is not acceptance. Resume the original session; explicit
+`sync --resume` is appropriate only while it is idle, avoiding concurrent writers.

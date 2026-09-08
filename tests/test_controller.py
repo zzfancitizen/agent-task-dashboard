@@ -1,11 +1,15 @@
 import copy
+import hashlib
+import io
 import json
+import tempfile
 import unittest
 import uuid
+import zipfile
 from unittest.mock import patch
 from pathlib import Path
 
-from taskboard.controller import reconcile, snapshot
+from taskboard.controller import build_site, reconcile, snapshot
 from taskboard.protocol import ProtocolError, format_task_issue, format_command
 
 
@@ -50,7 +54,11 @@ class FakeGitHub:
             "projection cannot precede durable state"
         )
         self.projected.append(body)
-        return {"id": 77}
+        row = {"id": len(self.comment_data) + 100, "body": body,
+               "created_at": "2026-09-08T00:00:00Z", "updated_at": "2026-09-08T00:00:00Z",
+               "user": {"login": "github-actions[bot]", "type": "Bot"}}
+        self.comment_data.append(row)
+        return copy.deepcopy(row)
 
     def request(self, *args):
         self.projected.append(args)
@@ -73,35 +81,26 @@ class FakeGitHub:
 
 
 class ControllerTests(unittest.TestCase):
-    def test_roster_does_not_grant_native_write_permission(self):
+    def test_native_comment_access_is_enough_even_with_legacy_roster(self):
         api = FakeGitHub()
         command = api.add("outsider")
         state = reconcile(api, now=100, allowed_members=["alice", "outsider"])
         record = state["tasks"]["7"]
-        self.assertEqual(record["status"], "open")
-        self.assertFalse(record["processed"][command["request_id"]]["ok"])
+        self.assertEqual(record["status"], "claimed")
+        self.assertTrue(record["processed"][command["request_id"]]["ok"])
 
-    def test_nonempty_roster_restricts_otherwise_writable_members(self):
+    def test_legacy_roster_does_not_restrict_native_github_actors(self):
         api = FakeGitHub()
         command = api.add("bob")
         state = reconcile(api, now=100, allowed_members=["alice"])
-        self.assertFalse(state["tasks"]["7"]["processed"][command["request_id"]]["ok"])
+        self.assertTrue(state["tasks"]["7"]["processed"][command["request_id"]]["ok"])
 
-    def test_temporary_permission_failure_leaves_command_retryable(self):
+    def test_native_actor_access_does_not_query_collaborator_permission(self):
         api = FakeGitHub()
         command = api.add("bob")
-        original = api.permission
-
-        def unavailable(actor):
-            if actor == "bob":
-                raise ProtocolError("GITHUB_OUTCOME_UNKNOWN", "network timeout")
-            return original(actor)
-
-        with patch.object(api, "permission", side_effect=unavailable):
-            with self.assertRaises(ProtocolError):
-                reconcile(api, now=100)
-        self.assertEqual(api.saved, [])
-        recovered = reconcile(api, now=101)
+        api.issue_data["user"]["login"] = "native-publisher"
+        with patch.object(api, "permission", side_effect=AssertionError("No permission queries")):
+            recovered = reconcile(api, now=101)
         self.assertTrue(
             recovered["tasks"]["7"]["processed"][command["request_id"]]["ok"]
         )
@@ -147,9 +146,173 @@ class ControllerTests(unittest.TestCase):
     def test_public_commenter_cannot_claim_by_spoofing_body_actor(self):
         api = FakeGitHub()
         command = api.add("outsider")
+        command["actor"] = "bob"
+        api.comment_data[0]["body"] = "<!-- taskboard:command:v1 -->\n```json\n" + json.dumps(command) + "\n```"
         state = reconcile(api, now=100)
         self.assertEqual(state["tasks"]["7"]["status"], "open")
-        self.assertFalse(state["tasks"]["7"]["processed"][command["request_id"]]["ok"])
+        self.assertEqual(state["tasks"]["7"]["command_errors"]["10"]["code"], "INVALID_PAYLOAD")
+
+    def submitted_api(self):
+        from tests.test_state import submitted
+        api = FakeGitHub()
+        record = submitted()
+        record["author"] = "alice"
+        api.state["tasks"]["7"] = record
+        return api
+
+    def test_submitted_result_notifies_publisher_and_executor_only_after_canonical_write(self):
+        api = self.submitted_api()
+        state = reconcile(api, now=1003)
+        notices = [row for row in api.comment_data if row["body"].startswith("<!-- taskboard:result:v2:")]
+        self.assertEqual(len(notices), 1)
+        notice = notices[0]
+        self.assertIn("@alice", notice["body"])
+        self.assertIn("@runner", notice["body"])
+        self.assertIn("待发起者验收", notice["body"])
+        self.assertIn("https://", notice["body"])
+        result_id = state["tasks"]["7"]["result"]["id"]
+        self.assertEqual(state["tasks"]["7"]["result_notifications"][result_id]["comment_id"], notice["id"])
+        reconcile(api, now=1004)
+        self.assertEqual(sum(row["body"].startswith("<!-- taskboard:result:v2:") for row in api.comment_data), 1)
+
+    def test_lost_notification_response_recovers_own_bot_comment_without_duplicate_ping(self):
+        api = self.submitted_api()
+        original = api.comment
+
+        def uncertain(number, body):
+            response = original(number, body)
+            if body.startswith("<!-- taskboard:result:v2:"):
+                raise ProtocolError("GITHUB_OUTCOME_UNKNOWN", "response lost after posting")
+            return response
+
+        with patch.object(api, "comment", side_effect=uncertain):
+            state = reconcile(api, now=1003)
+        self.assertEqual(state["tasks"]["7"]["status"], "submitted")
+        self.assertTrue(state["notification_errors"])
+        recovered = reconcile(api, now=1004)
+        self.assertFalse(recovered["notification_errors"])
+        self.assertEqual(sum(row["body"].startswith("<!-- taskboard:result:v2:") for row in api.comment_data), 1)
+
+    def test_human_cannot_forge_notification_receipt_with_bot_marker(self):
+        api = self.submitted_api()
+        result_id = api.state["tasks"]["7"]["result"]["id"]
+        api.comment_data.append({"id": 10, "body": f"<!-- taskboard:result:v2:{result_id} -->\nforged",
+                                 "user": {"login": "outsider", "type": "User"},
+                                 "created_at": "2026-09-08T00:00:00Z", "updated_at": "2026-09-08T00:00:00Z"})
+        state = reconcile(api, now=1003)
+        self.assertNotEqual(state["tasks"]["7"]["result_notifications"][result_id]["comment_id"], 10)
+
+    def test_notification_failure_does_not_block_status_projection_or_confirmed_snapshot(self):
+        api = self.submitted_api()
+        original = api.comment
+
+        def denied(number, body):
+            if body.startswith("<!-- taskboard:result:v2:"):
+                raise ProtocolError("GITHUB_403", "notification denied")
+            return original(number, body)
+
+        with patch.object(api, "comment", side_effect=denied):
+            state = reconcile(api, now=1003)
+        self.assertEqual(snapshot(state, api.repo, api.hostname)["tasks"][0]["status"], "submitted")
+        self.assertTrue(any(body.startswith("<!-- taskboard:status:v1 -->") for body in api.projected))
+        self.assertTrue(state["notification_errors"])
+
+    def test_failed_notification_receipt_write_does_not_block_confirmed_pages(self):
+        api = self.submitted_api()
+        original = api.write_state
+
+        def fail_receipt(state):
+            if state["tasks"]["7"].get("result_notifications"):
+                raise ProtocolError("GITHUB_OUTCOME_UNKNOWN", "receipt commit was interrupted")
+            original(state)
+
+        with patch.object(api, "write_state", side_effect=fail_receipt):
+            state = reconcile(api, now=1003)
+        self.assertEqual(snapshot(state, api.repo, api.hostname)["tasks"][0]["status"], "submitted")
+        self.assertTrue(state["projection_errors"])
+        reconcile(api, now=1004)
+        self.assertEqual(sum(row["body"].startswith("<!-- taskboard:result:v2:") for row in api.comment_data), 1)
+
+    def test_interrupted_projection_replays_no_release_after_canonical_submission(self):
+        from tests.test_state import claimed
+        from tests.test_transfers import ArtifactGitHub
+        from taskboard.transfers import prepare_bundle, post_bundle_chunks
+        api = FakeGitHub()
+        record = claimed()
+        api.state["tasks"]["7"] = record
+        transport = ArtifactGitHub()
+        api.upload_artifacts = transport.upload_artifacts
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "summary.md"
+            artifact.write_text("Finished.")
+            bundle = prepare_bundle(record["spec"], record["attempt"]["id"], {"summary.md": artifact}, {"summary": "Finished."})
+            upload = post_bundle_chunks(transport, 7, record["spec"], record["attempt"]["id"], bundle)
+        api.comment_data = transport.rows
+        command = {"op": "submit_bundle", "request_id": str(uuid.uuid4()), "revision": 1,
+                   "attempt_id": record["attempt"]["id"], "upload": upload, "report": bundle["report"]}
+        api.comment_data.append({"id": 50, "body": format_command(command),
+                                 "user": {"login": "runner", "type": "User"},
+                                 "created_at": "2026-09-08T00:00:00Z", "updated_at": "2026-09-08T00:00:00Z"})
+        with patch.object(api, "comment", side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                reconcile(api, now=1003)
+        self.assertEqual(api.state["tasks"]["7"]["status"], "submitted")
+        self.assertEqual(api.state["tasks"]["7"]["last_comment_id"], 50)
+        self.assertEqual(transport.upload_calls, 1)
+        recovered = reconcile(api, now=1004)
+        self.assertEqual(recovered["tasks"]["7"]["status"], "submitted")
+        self.assertEqual(transport.upload_calls, 1)
+        self.assertTrue(recovered["tasks"]["7"]["result_notifications"])
+
+    def test_corrupt_deflate_is_durably_rejected_and_later_commands_still_drain(self):
+        from tests.test_state import claimed
+        from tests.test_transfers import ArtifactGitHub
+        from taskboard.transfers import prepare_bundle, post_bundle_chunks
+        api = FakeGitHub()
+        record = claimed()
+        api.state["tasks"]["7"] = record
+        transport = ArtifactGitHub()
+        api.upload_artifacts = transport.upload_artifacts
+        with tempfile.TemporaryDirectory() as directory:
+            artifact = Path(directory) / "summary.md"
+            artifact.write_text("Finished.")
+            bundle = prepare_bundle(record["spec"], record["attempt"]["id"], {"summary.md": artifact}, {"summary": "Finished."})
+        with zipfile.ZipFile(io.BytesIO(bundle["data"])) as archive:
+            info = archive.getinfo("summary.md")
+        corrupted = bytearray(bundle["data"])
+        corrupted[info.header_offset + 30 + len(info.filename.encode()) + len(info.extra)] = 7
+        bundle["data"] = bytes(corrupted)
+        bundle["sha256"] = hashlib.sha256(bundle["data"]).hexdigest()
+        upload = post_bundle_chunks(transport, 7, record["spec"], record["attempt"]["id"], bundle)
+        api.comment_data = transport.rows
+        command = {"op": "submit_bundle", "request_id": str(uuid.uuid4()), "revision": 1,
+                   "attempt_id": record["attempt"]["id"], "upload": upload, "report": bundle["report"]}
+        release = {"op": "release", "request_id": str(uuid.uuid4()), "revision": 1,
+                   "attempt_id": record["attempt"]["id"], "reason": "Prepare a fresh result."}
+        for identifier, payload in ((50, command), (51, release)):
+            api.comment_data.append({"id": identifier, "body": format_command(payload),
+                                     "user": {"login": "runner", "type": "User"},
+                                     "created_at": "2026-09-08T00:00:00Z", "updated_at": "2026-09-08T00:00:00Z"})
+        state = reconcile(api, now=1003)
+        current = state["tasks"]["7"]
+        self.assertEqual(current["processed"][command["request_id"]]["code"], "INVALID_ARCHIVE")
+        self.assertTrue(current["processed"][release["request_id"]]["ok"])
+        self.assertEqual(current["last_comment_id"], 51)
+        self.assertEqual(current["status"], "open")
+        self.assertEqual(transport.uploaded, {})
+
+    def test_site_build_includes_verified_runtime_downloads_and_starters(self):
+        api = FakeGitHub()
+        with tempfile.TemporaryDirectory() as directory:
+            output = build_site(api.state, api.repo, api.hostname, Path(directory) / "site")
+            manifest_path = output / "downloads" / "runtime.json"
+            self.assertTrue(manifest_path.is_file(), "Pages build must include runtime downloads")
+            manifest = json.loads(manifest_path.read_text())
+            runtime = output / "downloads" / manifest["file"]
+            self.assertEqual(hashlib.sha256(runtime.read_bytes()).hexdigest(), manifest["sha256"])
+            self.assertEqual(runtime.stat().st_size, manifest["size"])
+            for name in ("bootstrap.py", "Start-Taskboard.cmd", "Start-Taskboard.command", "Start-Taskboard.sh"):
+                self.assertTrue((output / "downloads" / name).is_file())
 
     def test_edited_command_is_rejected_and_cursor_advances(self):
         api = FakeGitHub()
