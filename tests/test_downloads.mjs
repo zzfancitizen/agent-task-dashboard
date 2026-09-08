@@ -149,3 +149,54 @@ test('copyable publisher instructions bind the real board and require affirmativ
   for (const field of ['first_step', 'inputs', 'completion', 'blocking_questions', 'execution_prompt']) assert.ok(instruction.includes(field), `Missing author-review guidance: ${field}`);
   assert.throws(() => publisherInstructions({ ...snapshot, demo: true }, 'https://pages.acme.internal/guild/board/'));
 });
+
+const deployments = [
+  { name: 'a different GitHub owner and project', hostname: 'github.com', repository: 'northwind/agent-relay', pageURL: 'https://northwind.github.io/agent-relay/', repositoryURL: 'https://github.com/northwind/agent-relay', downloadsURL: 'https://northwind.github.io/agent-relay/downloads/' },
+  { name: 'a renamed project with query and fragment', hostname: 'github.com', repository: 'contoso/guild-board', pageURL: 'https://contoso.github.io/guild-board/?view=open#publish', repositoryURL: 'https://github.com/contoso/guild-board', downloadsURL: 'https://contoso.github.io/guild-board/downloads/' },
+  { name: 'user Pages at the domain root', hostname: 'github.com', repository: 'octocat/octocat.github.io', pageURL: 'https://octocat.github.io/', repositoryURL: 'https://github.com/octocat/octocat.github.io', downloadsURL: 'https://octocat.github.io/downloads/' },
+  { name: 'organization Pages at the domain root', hostname: 'github.com', repository: 'northwind/northwind.github.io', pageURL: 'https://northwind.github.io/?view=open#publish', repositoryURL: 'https://github.com/northwind/northwind.github.io', downloadsURL: 'https://northwind.github.io/downloads/' },
+  { name: 'enterprise GitHub and a separate Pages host', hostname: 'git.corp.test', repository: 'treasury/work-board', pageURL: 'https://pages.corp.test/teams/treasury/work-board/', repositoryURL: 'https://git.corp.test/treasury/work-board', downloadsURL: 'https://pages.corp.test/teams/treasury/work-board/downloads/' },
+  { name: 'a custom Pages domain', hostname: 'github.com', repository: 'northwind/internal-guild', pageURL: 'https://guild.northwind.example/', repositoryURL: 'https://github.com/northwind/internal-guild', downloadsURL: 'https://guild.northwind.example/downloads/' },
+  { name: 'an explicit index.html on a custom domain subpath', hostname: 'git.corp.test', repository: 'operations/relay', pageURL: 'https://staff.example.org/tools/relay/index.html?view=open#publish', repositoryURL: 'https://git.corp.test/operations/relay', downloadsURL: 'https://staff.example.org/tools/relay/downloads/' },
+];
+
+for (const deployment of deployments) test(`publisher text and downloaded packages follow ${deployment.name}`, async () => {
+  const board = { ...snapshot, hostname: deployment.hostname, repository: deployment.repository };
+  const instruction = publisherInstructions(board, deployment.pageURL);
+  assert.equal(instruction.match(/^Task board repository: (.+)$/m)?.[1], deployment.repositoryURL);
+  assert.equal(instruction.match(/^Download assets: (.+)$/m)?.[1], deployment.downloadsURL);
+
+  for (const action of ['run', 'install-publisher']) {
+    const expectedAssets = new Map([
+      [`${deployment.downloadsURL}runtime.json`, JSON.stringify({ schema_version: 1, file: 'taskboard-runtime.zip', sha256: runtimeHash, size: runtime.length })],
+      [`${deployment.downloadsURL}taskboard-runtime.zip`, runtime],
+      [`${deployment.downloadsURL}bootstrap.py`, 'print("bootstrap fixture")\n'],
+      [`${deployment.downloadsURL}Start-Taskboard.command`, starterText.macos],
+    ]);
+    const fetched = [];
+    const result = await createDownloadPackage({ snapshot: board, task, action, platform: 'macos' }, {
+      pageURL: deployment.pageURL,
+      fetchImpl: async (url, fetchOptions) => {
+        fetched.push(String(url));
+        assert.equal(fetchOptions.credentials, 'omit');
+        const response = expectedAssets.get(String(url));
+        return response === undefined ? new Response('wrong deployment path', { status: 404 }) : new Response(response);
+      },
+    });
+    assert.deepEqual(fetched.sort(), [...expectedAssets.keys()].sort());
+    const files = unzipStored(result.bytes);
+    const request = JSON.parse(decoder.decode(files.get('request.json').data));
+    assert.equal(request.hostname, deployment.hostname);
+    assert.equal(request.repository, deployment.repository);
+    assert.equal(request.action, action);
+    assert.equal(request.runtime_sha256, runtimeHash);
+    assert.equal(decoder.decode(files.get('READ-ME.txt').data).match(/^Task repository: (.+)$/m)?.[1], deployment.repositoryURL);
+    if (action === 'run') {
+      assert.equal(request.issue, task.number);
+      assert.equal(request.revision, task.spec.revision);
+      assert.equal(request.task_digest, task.digest);
+    } else {
+      assert.equal(Object.hasOwn(request, 'issue'), false);
+    }
+  }
+});

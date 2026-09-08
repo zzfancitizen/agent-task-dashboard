@@ -2,10 +2,14 @@ import copy
 import hashlib
 import io
 import json
+import os
+import runpy
+import sys
 import tempfile
 import unittest
 import uuid
 import zipfile
+from contextlib import redirect_stdout
 from unittest.mock import patch
 from pathlib import Path
 
@@ -340,6 +344,57 @@ class ControllerTests(unittest.TestCase):
             self.assertEqual(runtime.stat().st_size, manifest["size"])
             for name in ("bootstrap.py", "Start-Taskboard.cmd", "Start-Taskboard.command", "Start-Taskboard.sh"):
                 self.assertTrue((output / "downloads" / name).is_file())
+
+    def test_actions_environment_reaches_the_published_snapshot(self):
+        from taskboard.controller import main as controller_main
+
+        deployments = (
+            ({"GITHUB_REPOSITORY": "northwind/agent-relay", "GITHUB_SERVER_URL": "https://github.com"}, "github.com"),
+            ({"GITHUB_REPOSITORY": "treasury/work-board", "GITHUB_SERVER_URL": "https://git.corp.test"}, "git.corp.test"),
+            ({"GITHUB_REPOSITORY": "contoso/contoso.github.io"}, "github.com"),
+        )
+        entrypoint = Path("scripts/actions_controller.py").resolve()
+        for environment, expected_host in deployments:
+            with self.subTest(environment=environment), tempfile.TemporaryDirectory() as directory:
+                destination = Path(directory) / "site"
+                api = FakeGitHub()
+                api.repo = environment["GITHUB_REPOSITORY"]
+                api.hostname = expected_host
+                api.issue_data["html_url"] = f"https://{expected_host}/{api.repo}/issues/7"
+                published = []
+
+                def capture_publication(output):
+                    self.assertEqual(Path(output), destination)
+                    published.append(json.loads((Path(output) / "tasks.json").read_text()))
+                    self.assertTrue((Path(output) / "index.html").is_file())
+                    self.assertTrue((Path(output) / "downloads" / "runtime.json").is_file())
+
+                api.publish_directory = capture_publication
+
+                def use_temporary_destination(argv):
+                    # Exercise the real parser, reconciliation and site builder;
+                    # only the output directory and remote transport are replaced.
+                    return controller_main([*argv, "--output", str(destination)])
+
+                with (
+                    patch.dict(os.environ, environment, clear=True),
+                    patch.object(sys, "path", list(sys.path)),
+                    patch("taskboard.controller.GitHub", return_value=api) as gateway,
+                    patch("taskboard.controller.main", side_effect=use_temporary_destination),
+                    patch("taskboard.github.GitHub._run", side_effect=AssertionError("No live GitHub calls")),
+                    redirect_stdout(io.StringIO()),
+                    self.assertRaises(SystemExit) as exited,
+                ):
+                    runpy.run_path(str(entrypoint), run_name="__main__")
+
+                self.assertEqual(exited.exception.code, 0)
+                gateway.assert_called_once_with(environment["GITHUB_REPOSITORY"], expected_host)
+                self.assertEqual(len(published), 1)
+                view = published[0]
+                self.assertEqual(view["repository"], environment["GITHUB_REPOSITORY"])
+                self.assertEqual(view["hostname"], expected_host)
+                self.assertFalse(view["demo"])
+                self.assertEqual(view["tasks"][0]["url"], api.issue_data["html_url"])
 
     def test_edited_command_is_rejected_and_cursor_advances(self):
         api = FakeGitHub()

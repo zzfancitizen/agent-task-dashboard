@@ -3,11 +3,19 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as model from '../site/model.mjs';
 import {
-  validateHostname, validateRepository, githubURL, taskRunURL, taskCommand,
+  validateHostname, validateRepository, githubURL, githubAccountURL, taskRunURL, taskCommand,
   safeHTTPS, resourceURL, filterTasks, taskCounts, normalizeSnapshot, buildTaskExport, taskLeaderboards, executionDuration,
 } from '../site/model.mjs';
 
 const snapshot = { schema_version: 1, repository: 'acme/task-board', hostname: 'github.acme.internal', generated_at: '2026-09-08T09:00:00Z', demo: false, tasks: [] };
+
+test('account shortcut uses the configured GitHub host without guessing a user', () => {
+  assert.equal(githubAccountURL('github.com'), 'https://github.com/settings/profile');
+  assert.equal(githubAccountURL('GITHUB.ACME.INTERNAL'), 'https://github.acme.internal/settings/profile');
+  for (const invalid of ['https://github.com', 'github.com/user', 'github.com:443', 'user@github.com', 'github.com?user=alice']) {
+    assert.throws(() => githubAccountURL(invalid));
+  }
+});
 const makeTask = (number, status, title, agents, category = 'code') => ({ number, status, author: 'lin', spec: { title, prompt: '检查边界条件', execution: { compatible_agents: agents }, category } });
 const tasks = [makeTask(1, 'open', '补充 Date 测试', ['codex']), makeTask(2, 'running', '整理文档', ['claude'], 'docs'), makeTask(3, 'submitted', '调研队列', ['codex', 'claude'], 'research'), makeTask(4, 'accepted', '文档校验', ['codex'], 'docs')];
 const handoff = {

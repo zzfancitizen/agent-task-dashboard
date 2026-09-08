@@ -6,7 +6,7 @@
 
 **日常查看全部在 GitHub Pages。发布由现有 agent 协助完成；领取从网页下载执行包，解压后运行。无需另部署后台、数据库或本地页面。** 线上组件只有 GitHub Issues、Actions、Pages 和 Release 附件，支持公司 GitHub 域名。
 
-看板沿用公司 GitHub 的 SSO 和原生访问权限，没有额外的参与者名单，也不要求普通成员拥有仓库写权限。成员需要能读取看板仓库、创建 Issue 和评论，并读取任务引用的源代码及资料。Release 写入由 Actions 完成。
+任务发布和执行通过本地工具沿用公司 GitHub 的 SSO 和原生访问权限，没有额外的参与者名单，也不要求普通成员拥有仓库写权限。成员需要能读取看板仓库、创建 Issue 和评论，并读取任务引用的源代码及资料。Release 写入由 Actions 完成。
 
 ## 目录
 
@@ -35,6 +35,8 @@
 一次接力是：**agent 整理委托 → 发布者确认 → 发布 → 领取 → 本地执行 → 提交成果 → 发布者验收**。
 
 羊皮纸卡片的一至三星对应 S / M / L 任务规模，印章对应真实状态。页面是 Actions 异步生成的快照；下载执行包不会立即占用任务，运行工具会重新确认任务和领取归属。
+
+右上角 **GitHub account** 打开当前配置的 GitHub 主机上的账号页面。静态 Pages 无法读取 GitHub 浏览器登录态，因此不显示假定的登录用户名。实际发布、领取和回传使用本地 GitHub CLI 登录的账号，它可能与浏览器账号不同。若要在 Pages 内显示经过认证的用户名，需要另行接入身份认证。
 
 本手册的 `git.company.example`、`team/agent-task-board`、`team/demo-api`、Issue `42`、路径和 UUID 均为示例，使用时替换为实际值。演示模式只展示虚构任务，不提供真实领取。
 
@@ -250,6 +252,15 @@ Runner 需要 Python 3.11+、GitHub CLI；`Check task board` 工作流还需要 
 3. 在 **Settings → Pages → Build and deployment** 选择 **Deploy from a branch**，来源为 **`gh-pages` / `/ (root)`**。本方案使用公开站点，不设置应用自己的登录入口。
 4. 将 `TASKBOARD_PAGES_ENABLED` 设为 `true`，再运行一次 controller。
 5. 把 GitHub 显示的实际 Pages 地址提供给成员。企业域名和站点路径以公司环境为准。
+
+**Copy agent instructions** 中的两个地址会随部署自动变化：
+
+| 地址 | 来源 |
+| --- | --- |
+| `Task board repository` | `tasks.json` 中的主机与仓库，由工作流的 `GITHUB_SERVER_URL` 和 `GITHUB_REPOSITORY` 生成 |
+| `Download assets` | 根据实际页面地址解析 `./downloads/`，保留项目子路径或自定义域名 |
+
+例如，在 `git.company.example` 的 `engineering/relay` 仓库构建，页面位于 `https://pages.company.example/teams/relay/` 时，这两个地址分别是 `https://git.company.example/engineering/relay` 和 `https://pages.company.example/teams/relay/downloads/`。不需要替换源码里的用户名或仓库名；在目标仓库运行 controller，生成它自己的快照和站点即可。生成的 `tasks.json` 和 `taskboard-state` 数据包含所属看板身份，不要直接复用另一个看板的生成数据作为新部署。
 
 任务与命令评论触发更新；成果分片评论先保留在 Issue，最终提交命令触发处理。工作流也支持手动运行，以及每小时第 17、47 分钟的恢复扫描；调度不保证实时。
 

@@ -1,4 +1,4 @@
-import { STATUS, CATEGORIES, normalizeSnapshot, filterTasks, taskCounts, taskLeaderboards, executionDuration, githubURL, taskCommand, safeHTTPS, resourceURL, buildTaskExport, taskExecutionPrompt, relativeTime } from './model.mjs';
+import { STATUS, CATEGORIES, normalizeSnapshot, filterTasks, taskCounts, taskLeaderboards, executionDuration, githubURL, githubAccountURL, taskCommand, safeHTTPS, resourceURL, buildTaskExport, taskExecutionPrompt, relativeTime } from './model.mjs';
 import { DOWNLOAD_PLATFORMS, createDownloadPackage, publisherInstructions } from './downloads.mjs';
 
 const $ = selector => document.querySelector(selector);
@@ -149,6 +149,7 @@ function renderWorkspace() {
   $('#workspace-repo').title = snapshot.repository || 'No GitHub task repository configured';
   const repoURL = snapshot.repository && !snapshot.demo ? githubURL(snapshot) : null;
   setExternalLink($('#nav-repository'), repoURL);
+  setExternalLink($('#github-account-link'), repoURL ? githubAccountURL(snapshot.hostname) : null);
   const docs = $('#guide-docs-link');
   docs.hidden = !repoURL;
   if (repoURL) setExternalLink(docs, githubURL(snapshot, 'blob/HEAD/README.en.md'));
