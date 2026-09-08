@@ -137,6 +137,14 @@ function renderTask(task) {
   const category = Object.hasOwn(CATEGORIES, spec.category) ? spec.category : 'code';
   const row = element('article', 'task-row');
   row.dataset.issue = task.number;
+  const pin = element('span', 'quest-pin');
+  pin.setAttribute('aria-hidden', 'true');
+  const docket = element('div', 'quest-docket');
+  const size = ['S', 'M', 'L'].includes(spec.size) ? spec.size : 'M';
+  const rank = element('span', 'quest-rank', { S: '★☆☆', M: '★★☆', L: '★★★' }[size]);
+  rank.setAttribute('aria-label', `任务规模 ${size}`);
+  rank.title = `星级对应任务规模 ${size}`;
+  docket.append(element('span', 'quest-number', `委托书 / No. ${String(task.number).padStart(3, '0')}`), rank);
   const categoryIcon = element('span', `task-category-icon ${category}`);
   categoryIcon.append(icon(category === 'docs' ? 'file' : category === 'research' ? 'research' : 'code'));
   const content = element('div', 'task-content');
@@ -164,7 +172,7 @@ function renderTask(task) {
     view.append(icon('arrow', true));
     actions.append(view);
   }
-  row.append(categoryIcon, content, actions);
+  row.append(pin, docket, categoryIcon, content, actions);
   return row;
 }
 function emptyArt(type = 'box') {

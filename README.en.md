@@ -31,6 +31,8 @@ Members who are running low on agent quota can publish a complete task package. 
 
 A complete handoff follows **publish → Actions confirmation → claim → local execution → submit results → publisher acceptance**. Pages displays a snapshot that updates asynchronously. A task marked “Available” (待领取) may have been claimed since the last refresh; the local tool confirms ownership again.
 
+The board presents tasks as parchment commission sheets. One, two, and three stars correspond to the existing S / M / L task sizes, and stamps show actual task status. They do not introduce new quota or reward rules.
+
 The hostname `git.company.example`, repositories `team/agent-task-board` and `team/demo-api`, paths, Issue `42`, and UUIDs in this guide are examples. Replace them with actual values. Do not execute the fictional tasks in the example files unchanged.
 
 <a id="deployment"></a>
