@@ -255,6 +255,9 @@ Do not configure a participant roster or assign write / maintain / admin roles j
 4. Set `TASKBOARD_PAGES_ENABLED` to `true`, then run the controller again.
 5. Share the actual Pages URL shown by GitHub. Enterprise domains and paths depend on your company setup.
 
+<a id="deployment-check"></a>
+### 6.3 Verify the account shortcut and deployment URLs
+
 The two URLs in **Copy agent instructions** adapt to each deployment:
 
 | URL | Source |
@@ -263,6 +266,14 @@ The two URLs in **Copy agent instructions** adapt to each deployment:
 | `Download assets` | `./downloads/` resolved against the actual page URL, including a project subpath or custom domain |
 
 For example, a board built in `engineering/relay` on `git.company.example` and served at `https://pages.company.example/teams/relay/` produces `https://git.company.example/engineering/relay` and `https://pages.company.example/teams/relay/downloads/`. No source-code owner or repository replacement is needed. Run the controller in the target repository to generate its own snapshot and site. Generated `tasks.json` and `taskboard-state` data carry a board's identity; do not reuse another board's generated data as a fresh deployment.
+
+After the first deployment or a move to another repository, check the following:
+
+1. Wait for **Task board controller** and the Pages deployment in the target repository to finish. Open the live page, confirm there is no `DEMO` banner, and check that the sidebar shows the target repository.
+2. Check that **GitHub account** points to `/settings/profile` on the intended GitHub host. GitHub displays the account; the static board does not read your browser sign-in.
+3. Open **Publish task → Copy agent instructions** and verify the repository URL and download directory against the table above. After downloading publisher setup, check that `hostname` and `repository` in the package's `request.json` also identify the target board.
+
+If the old repository still appears, check `hostname` and `repository` in the target repository's `gh-pages/tasks.json`, rerun that repository's controller, and refresh Pages. Correct the generated snapshot rather than only editing the copied prompt, so subsequent downloads and execution use the intended board too.
 
 Task and command comments trigger updates. Artifact chunk comments remain in the Issue until the final submission command triggers processing. Manual runs and recovery scans at minutes 17 and 47 of each hour are also available; scheduling is not real-time.
 
@@ -445,6 +456,8 @@ Prefix commands with `./bin/taskboard`. Shared options are `--repo`, `--hostname
 | Double-clicking the ZIP only shows its contents | Extract everything, then open the appropriate `Start-Taskboard` file with the other files in the same folder |
 | The OS blocks a downloaded script | Follow company policy for download-origin/execution prompts. On Linux, check executable permission in file properties; do not disable system protections |
 | An installed tool is still missing | Retry in the wizard, or reopen the starter if PATH has not refreshed. Managed devices may require administrator installation |
+| The header does not show my GitHub username | This is expected in pure static mode. **GitHub account** opens GitHub's account page; publishing and execution use the local GitHub CLI account |
+| Instructions or packages still point to the old repository after migration | Follow the [deployment verification steps](#deployment-check): check the target `tasks.json`, Pages publishing source, and `request.json`, then rerun the controller in the target repository |
 | GitHub login fails or `GITHUB_403` | Check the host, account, SSO, Issue/comment permissions, and source read access. Actions failures also require checking the workflow's own write permissions |
 | Pages lacks a new task or result | Check the controller, `gh-pages/tasks.json`, and Pages build. An administrator can run the controller manually. Demo data is not live data |
 | Actions stays queued | Check `TASKBOARD_RUNNER`, runner availability, and organization policies; wait rather than creating duplicate tasks |

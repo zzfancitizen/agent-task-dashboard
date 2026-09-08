@@ -253,6 +253,9 @@ Runner 需要 Python 3.11+、GitHub CLI；`Check task board` 工作流还需要 
 4. 将 `TASKBOARD_PAGES_ENABLED` 设为 `true`，再运行一次 controller。
 5. 把 GitHub 显示的实际 Pages 地址提供给成员。企业域名和站点路径以公司环境为准。
 
+<a id="deployment-check"></a>
+### 6.3 核对账号入口和部署地址
+
 **Copy agent instructions** 中的两个地址会随部署自动变化：
 
 | 地址 | 来源 |
@@ -261,6 +264,14 @@ Runner 需要 Python 3.11+、GitHub CLI；`Check task board` 工作流还需要 
 | `Download assets` | 根据实际页面地址解析 `./downloads/`，保留项目子路径或自定义域名 |
 
 例如，在 `git.company.example` 的 `engineering/relay` 仓库构建，页面位于 `https://pages.company.example/teams/relay/` 时，这两个地址分别是 `https://git.company.example/engineering/relay` 和 `https://pages.company.example/teams/relay/downloads/`。不需要替换源码里的用户名或仓库名；在目标仓库运行 controller，生成它自己的快照和站点即可。生成的 `tasks.json` 和 `taskboard-state` 数据包含所属看板身份，不要直接复用另一个看板的生成数据作为新部署。
+
+首次部署或迁移到新仓库后，按以下步骤核对：
+
+1. 等待目标仓库的 **Task board controller** 和 Pages 部署完成，打开正式页面，确认没有 `DEMO` 标识，左侧显示目标仓库。
+2. 检查右上角 **GitHub account** 的链接是否指向目标 GitHub 主机的 `/settings/profile`。账号由 GitHub 页面显示；看板本身不读取浏览器登录态。
+3. 打开 **Publish task → Copy agent instructions**，核对上表中的仓库地址和下载目录。下载发布接入包后，包内 `request.json` 的 `hostname`、`repository` 也应对应目标看板。
+
+若仍显示旧仓库，先核对目标仓库 `gh-pages/tasks.json` 的 `hostname`、`repository`，再运行该仓库自己的 controller 并刷新 Pages。不要通过手改复制出的 prompt 掩盖错误快照，否则后续下载和执行仍可能指向旧看板。
 
 任务与命令评论触发更新；成果分片评论先保留在 Issue，最终提交命令触发处理。工作流也支持手动运行，以及每小时第 17、47 分钟的恢复扫描；调度不保证实时。
 
@@ -443,6 +454,8 @@ Hook 通过 stdin 获取真实 session 与 cwd，写入本地关联，并把提�
 | ZIP 双击后只看到文件列表 | 先完整解压，再运行对应 `Start-Taskboard` 文件，保留其他文件在同一目录 |
 | 系统提示无法运行下载脚本 | 按公司设备策略处理下载来源/运行确认；Linux 检查文件属性中的运行权限，不关闭系统保护 |
 | 提示缺少工具，安装后仍找不到 | 返回向导重试；PATH 尚未更新时重新打开启动文件。公司受管设备可能需要管理员安装 |
+| 右上角没有显示 GitHub 用户名 | 这是纯静态模式的预期行为。**GitHub account** 打开 GitHub 自己的账号页面；发布和执行使用本地 GitHub CLI 的账号 |
+| 迁移后，复制指引或下载包仍指向旧仓库 | 按[部署核对步骤](#deployment-check)检查目标 `tasks.json`、Pages 发布来源和 `request.json`，在目标仓库重新运行 controller |
 | GitHub 登录失败或 `GITHUB_403` | 检查登录主机、账号、SSO、Issue/评论及源码读取权限；Actions 错误还需检查工作流自己的写权限 |
 | Pages 没有新任务或结果 | 检查 controller、`gh-pages/tasks.json` 和 Pages build；管理员可手动运行 controller。演示不是实际数据 |
 | Actions 一直排队 | 检查 `TASKBOARD_RUNNER` 标签、runner 在线情况与组织策略，等待确认，不重复创建任务 |
