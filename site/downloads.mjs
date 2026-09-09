@@ -2,7 +2,7 @@ import { validateHostname, validateRepository, safeRelativePath, githubURL } fro
 
 export const DOWNLOAD_PLATFORMS = {
   windows: { label: 'Windows', starter: 'Start-Taskboard.cmd', note: 'Extract the ZIP, then double-click the .cmd file. Windows may show an unknown publisher or SmartScreen prompt. Verify the source and follow your organization\'s requirements.' },
-  macos: { label: 'macOS', starter: 'Start-Taskboard.command', note: 'Extract the ZIP, then double-click the .command file. macOS may ask you to confirm a downloaded or unsigned script. Verify the source using your organization\'s approved process.' },
+  macos: { label: 'macOS', starter: 'Start-Taskboard.command', note: 'This launcher is unsigned. For an unverifiable-developer warning, verify the source and follow Apple\'s file-specific Open Anyway guidance. Stop and contact the maintainer for malware or damage warnings.', helpURL: 'https://support.apple.com/en-us/102445' },
   linux: { label: 'Linux', starter: 'Start-Taskboard.sh', note: 'Extract the ZIP, then double-click the .sh file. Some file managers open it as text. In file properties, allow it to run as a program, then choose Run in Terminal.' },
 };
 const encoder = new TextEncoder();
@@ -109,31 +109,56 @@ export function storedZip(entries) {
   return zip;
 }
 
+class DownloadAssetError extends Error {
+  constructor(url, message, cause) {
+    super(`${url.pathname}: ${message}`, cause ? { cause } : undefined);
+    this.assetURL = url.href;
+  }
+}
+
 async function fetchBytes(url, limit, fetchImpl) {
-  const response = await fetchImpl(url, { credentials: 'omit', redirect: 'error', mode: 'same-origin', cache: 'no-cache', signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new Error(`Download assets are unavailable (HTTP ${response.status}). Try again later or ask the board maintainer to publish the download assets.`);
-  if (Number(response.headers.get('content-length')) > limit) throw new Error('Download asset is too large. Contact the board maintainer.');
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Download asset is empty. Try again later.');
-  const chunks = [];
-  let length = 0;
   try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      length += value.length;
-      if (length > limit) {
-        await reader.cancel();
-        throw new Error('Download asset is too large. Contact the board maintainer.');
-      }
-      chunks.push(value);
+    // Pages may be behind a company SSO gateway even though the app is static.
+    // Retain this origin's session; never send it to a different origin.
+    const response = await fetchImpl(url, { credentials: 'same-origin', redirect: 'error', mode: 'same-origin', cache: 'no-cache', signal: AbortSignal.timeout(30000) });
+    if (!response.ok) {
+      const help = [401, 403].includes(response.status) ? 'Check your Pages sign-in and access permission, then retry.' : 'Try again later or ask the maintainer to check the published download assets.';
+      throw new DownloadAssetError(url, `Download assets are unavailable (HTTP ${response.status}). ${help}`);
     }
-  } finally { reader.releaseLock(); }
-  if (!length) throw new Error('Download asset is empty. Try again later.');
-  const data = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
-  return data;
+    if (/^(text\/html|application\/xhtml\+xml)\b/i.test(response.headers.get('content-type') || '')) {
+      throw new DownloadAssetError(url, 'The server returned an HTML page instead of a download asset. This may be a sign-in or proxy page; inspect access before retrying.');
+    }
+    if (Number(response.headers.get('content-length')) > limit) throw new DownloadAssetError(url, 'Download asset is too large. Contact the board maintainer.');
+    const reader = response.body?.getReader();
+    if (!reader) throw new DownloadAssetError(url, 'Download asset is empty. Try again later.');
+    const chunks = [];
+    let length = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        length += value.length;
+        if (length > limit) {
+          await reader.cancel();
+          throw new DownloadAssetError(url, 'Download asset is too large. Contact the board maintainer.');
+        }
+        chunks.push(value);
+      }
+    } finally { reader.releaseLock(); }
+    if (!length) throw new DownloadAssetError(url, 'Download asset is empty. Try again later.');
+    const data = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.length; }
+    // None of the fixed JSON, ZIP, Python or shell assets starts with markup.
+    // Reject preambles directly, including long/incomplete gateway comments.
+    if (/^\s*<(?:!doctype\s+html\b|html\b|!--|\?xml\b)/i.test(decoder.decode(data.subarray(0, 256)))) {
+      throw new DownloadAssetError(url, 'The response contains HTML/XML markup instead of the requested file. Check Pages sign-in or proxy access before retrying.');
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof DownloadAssetError) throw error;
+    throw new DownloadAssetError(url, 'The download request failed. Check Pages sign-in (SSO), network or certificate access, and browser policies. Redirects are blocked. Inspect this asset, then retry.', error);
+  }
 }
 
 export async function createDownloadPackage({ snapshot, task, platform, action = 'run' }, { pageURL = globalThis.location?.href, fetchImpl = globalThis.fetch, cryptoImpl = globalThis.crypto } = {}) {
@@ -142,15 +167,16 @@ export async function createDownloadPackage({ snapshot, task, platform, action =
   const pending = buildDownloadRequest(snapshot, { task, action }, '0'.repeat(64));
   const root = downloadsRoot(pageURL);
   if (!cryptoImpl?.subtle?.digest) throw new Error('This browser cannot verify download integrity. Use a modern browser with HTTPS support.');
+  const manifestURL = new URL('runtime.json', root);
   let manifest;
-  try { manifest = JSON.parse(decoder.decode(await fetchBytes(new URL('runtime.json', root), 16 * 1024, fetchImpl))); }
+  try { manifest = JSON.parse(decoder.decode(await fetchBytes(manifestURL, 16 * 1024, fetchImpl))); }
   catch (error) {
-    if (error instanceof SyntaxError) throw new Error('Invalid download manifest. Contact the board maintainer.');
+    if (error instanceof SyntaxError) throw new DownloadAssetError(manifestURL, 'Invalid download manifest JSON. Contact the board maintainer.');
     throw error;
   }
   if (manifest?.schema_version !== 1 || manifest.file !== 'taskboard-runtime.zip' || !SHA256.test(manifest.sha256)
     || !Number.isSafeInteger(manifest.size) || manifest.size < 1 || manifest.size > MAX_RUNTIME) {
-    throw new Error('Download manifest is invalid or too large. Contact the board maintainer.');
+    throw new DownloadAssetError(manifestURL, 'Download manifest is invalid or too large. Contact the board maintainer.');
   }
   const [runtime, bootstrap, starter] = await Promise.all([
     fetchBytes(new URL(manifest.file, root), manifest.size, fetchImpl),
@@ -162,7 +188,7 @@ export async function createDownloadPackage({ snapshot, task, platform, action =
   if (digest !== manifest.sha256) throw new Error('Runtime SHA-256 verification failed. Refresh and try again.');
   const request = { ...pending, runtime_sha256: digest };
   const title = action === 'run' ? `Task #${request.issue}` : 'Publisher setup';
-  const readme = `Agent Relay · ${title}\n\n1. Extract the entire ZIP and keep all files in the same folder.\n2. Double-click ${selected.starter}. Do not run it inside the ZIP preview.\n3. On first use, follow the installation and login guide in the terminal. If a tool is missing, open its official installation instructions, install it, and retry.\n4. Choose Codex or Claude Code${action === 'run' ? ', then confirm the task to begin. The tool waits for GitHub confirmation and uploads the result automatically.' : ', then follow the guide to connect your project. Your existing Agent prepares a proposal and publishes it only after your explicit approval.'}\n\n${selected.note}\nThis is a script launcher package, not a signed native app. Do not bypass system or organizational security protections. Python, Git, GitHub CLI, and your chosen Agent are required. The guide checks for them and offers installation help; it does not install tools silently.\n\nTask repository: https://${request.hostname}/${request.repository}\n${action === 'run' ? `Issue: ${request.issue}; revision: ${request.revision}\nGitHub holds the live task status. Downloading this package does not claim the task.\n` : ''}Runtime SHA-256: ${digest}\n`;
+  const readme = `Agent Relay · ${title}\n\n1. Extract the entire ZIP and keep all files in the same folder.\n2. Double-click ${selected.starter}. Do not run it inside the ZIP preview.\n3. On first use, follow the installation and login guide in the terminal. If a tool is missing, open its official installation instructions, install it, and retry.\n4. Choose Codex or Claude Code${action === 'run' ? ', then confirm the task to begin. The tool waits for GitHub confirmation and uploads the result automatically.' : ', then follow the guide to connect your project. Your existing Agent prepares a proposal and publishes it only after your explicit approval.'}\n\n${selected.note}${selected.helpURL ? `\nApple first-open guidance: ${selected.helpURL}` : ''}\nThis is a script launcher package, not a signed native app. Do not bypass system or organizational security protections. Python, Git, GitHub CLI, and your chosen Agent are required. The guide checks for them and offers installation help; it does not install tools silently.\n\nTask repository: https://${request.hostname}/${request.repository}\n${action === 'run' ? `Issue: ${request.issue}; revision: ${request.revision}\nGitHub holds the live task status. Downloading this package does not claim the task.\n` : ''}Runtime SHA-256: ${digest}\n`;
   const bytes = storedZip([
     { name: 'runtime.zip', data: runtime }, { name: 'bootstrap.py', data: bootstrap },
     { name: 'request.json', data: `${JSON.stringify(request, null, 2)}\n` },

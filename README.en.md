@@ -129,6 +129,11 @@ Cancellation invalidates later submissions, but cannot remotely terminate an age
 
 The package contains starter scripts, a Python runtime source archive, and task locator metadata. It contains no GitHub token or provider login. It is an inspectable script ZIP, not a signed installer or standalone `.exe`. macOS / Windows may show download-origin or execution prompts; Linux may require enabling execution in file properties. Follow company device policy. The tool does not disable these protections.
 
+<a id="macos-first-open"></a>
+**First opening on macOS:** The `.command` launcher currently has no Developer ID signature or Apple notarization. For an unverifiable-developer or unverified-software warning, first verify the download source and file integrity; that warning alone does not mean malware was detected. If trusted and permitted by company policy, attempt to open the file, then use **System Settings → Privacy & Security → Open Anyway** and confirm opening that file. Managed devices may require IT assistance. Stop and contact the maintainer or IT for malware, damage, or corruption warnings; this procedure does not apply to those alerts. [Apple guidance](https://support.apple.com/en-us/102445)
+
+Runtime SHA-256 checks during download and startup verify archive consistency. They do not replace Developer ID signing, notarization, or malware detection.
+
 <a id="first-run"></a>
 ### 3.2 First run: guided installation and login
 
@@ -278,6 +283,15 @@ If the old repository still appears, check `hostname` and `repository` in the ta
 Task and command comments trigger updates. Artifact chunk comments remain in the Issue until the final submission command triggers processing. Manual runs and recovery scans at minutes 17 and 47 of each hour are also available; scheduling is not real-time.
 
 If company policy disables the Pages build API, use the generated `gh-pages` branch with the existing company Pages publishing process. The controller is the only writer of confirmed state. Do not edit `taskboard-state/state.json` manually. See the [GitHub-only architecture notes](docs/github-only.md) for details.
+
+<a id="download-troubleshooting"></a>
+### 6.4 Internal download errors
+
+Download requests retain **SSO cookies for the Pages site's own origin**; redirects and cross-origin requests remain blocked. The page shows the failed asset's path and link. A `fetch error` alone does not identify the cause in your company environment.
+
+1. Open the asset link from the error. If it opens a login page, complete Pages / SSO sign-in and return to the board to retry. If the asset still returns a login page, ask the administrator to check the authentication proxy.
+2. For HTTP 404, check that the target `gh-pages/downloads/` contains `runtime.json`, `taskboard-runtime.zip`, `bootstrap.py`, and all OS starter files, and that the latest site has been published.
+3. For certificate errors, connection failures, or proxy blocks, give the administrator the asset path, error, and HTTP status to investigate TLS / proxy configuration. Do not disable certificate or browser security checks.
 
 <a id="setup"></a>
 ## 7. Advanced configuration and CLI
@@ -454,7 +468,8 @@ Prefix commands with `./bin/taskboard`. Shared options are `--repo`, `--hostname
 | Symptom | What to do |
 | --- | --- |
 | Double-clicking the ZIP only shows its contents | Extract everything, then open the appropriate `Start-Taskboard` file with the other files in the same folder |
-| The OS blocks a downloaded script | Follow company policy for download-origin/execution prompts. On Linux, check executable permission in file properties; do not disable system protections |
+| The OS blocks a downloaded script | On macOS, distinguish the warning using the [first-opening guidance](#macos-first-open). On Linux, check executable permission in file properties. Follow company device policy |
+| Download publisher setup / task download shows `fetch error` | Open the failed asset link and follow [internal download troubleshooting](#download-troubleshooting) for SSO, published assets, TLS, and proxies. If all OS packages fail, check shared assets first |
 | An installed tool is still missing | Retry in the wizard, or reopen the starter if PATH has not refreshed. Managed devices may require administrator installation |
 | The header does not show my GitHub username | This is expected in pure static mode. **GitHub account** opens GitHub's account page; publishing and execution use the local GitHub CLI account |
 | Instructions or packages still point to the old repository after migration | Follow the [deployment verification steps](#deployment-check): check the target `tasks.json`, Pages publishing source, and `request.json`, then rerun the controller in the target repository |
@@ -501,6 +516,7 @@ Open the [local development preview](http://127.0.0.1:8080/) and explicitly ente
 - Only independent `subtask` delegation is supported, not complete session migration, uncommitted workspace patches, or arbitrary recursive delegation.
 - The local tool checks hashes, paths, write scope, and execution identity. `write_paths` is a pre-submission check, not an OS ACL. Task code and verification commands run with local user permissions and must come from work you have authorized.
 - Members retain their own GitHub and provider logins. Pages, task packages, and download scripts contain neither these credentials nor original-session logs.
+- Smoother first-run distribution across many Macs would require a fixed-version launcher app with Developer ID signing and Apple notarization; this is not implemented yet. GitHub can still host those artifacts, without another self-hosted backend. [Apple notarization requirements](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
 - Python/Node tests use temporary Git repositories and simulated GitHub/provider boundaries without spending model quota. Native Windows / Linux desktop installation and double-click flows, company SSO, actual runner/Pages operation, and two-account billing still need target-environment validation. This project does not claim those live checks have already been performed.
 
 | File | Purpose |

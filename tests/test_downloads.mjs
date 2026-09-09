@@ -22,7 +22,7 @@ function assets(overrides = {}) {
   return async (url, options) => {
     assert.equal(new URL(url).origin, 'https://pages.acme.internal');
     assert.equal(new URL(url).pathname.startsWith('/guild/board/downloads/'), true, 'Pages subdirectory must remain part of every request');
-    assert.equal(options.credentials, 'omit');
+    assert.equal(options.credentials, 'same-origin');
     assert.equal(options.redirect, 'error');
     const content = responses[new URL(url).pathname.split('/').at(-1)];
     return content === undefined ? new Response('missing', { status: 404 }) : new Response(content);
@@ -131,6 +131,61 @@ test('bad runtime digest, length, manifest URL and missing starter prevent any p
   await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, options({ 'bootstrap.py': 'x'.repeat(300000) })), /too large|size/);
 });
 
+test('network or blocked sign-in redirects identify the failing asset without echoing credentials', async () => {
+  const fetchImpl = async () => { throw new TypeError('Failed to fetch; private_token=not-for-display'); };
+  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'macos' }, { ...options(), fetchImpl }), error => {
+    assert.match(error.message, /runtime\.json/);
+    assert.match(error.message, /sign-in|SSO/i);
+    assert.doesNotMatch(error.message, /private_token/);
+    assert.equal(error.assetURL, 'https://pages.acme.internal/guild/board/downloads/runtime.json');
+    return true;
+  });
+});
+
+for (const asset of ['runtime.json', 'bootstrap.py', 'Start-Taskboard.command']) {
+  test(`an HTML login response for ${asset} is never packaged as executable content`, async () => {
+    const normal = assets();
+    const fetchImpl = (url, opts) => new URL(url).pathname.endsWith('/' + asset)
+      ? Promise.resolve(new Response('<!doctype html><html><body>Sign in</body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } }))
+      : normal(url, opts);
+    await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'macos' }, { ...options(), fetchImpl }), error => {
+      assert.ok(error.message.includes(asset));
+      assert.match(error.message, /HTML|sign-in/i);
+      assert.ok(error.assetURL.endsWith('/' + asset));
+      return true;
+    });
+  });
+}
+
+test('an interrupted asset stream retains the failed file location', async () => {
+  const normal = assets();
+  const fetchImpl = (url, opts) => new URL(url).pathname.endsWith('/bootstrap.py')
+    ? Promise.resolve(new Response(new ReadableStream({ start(controller) { controller.error(new TypeError('connection closed')); } })))
+    : normal(url, opts);
+  await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'linux' }, { ...options(), fetchImpl }), error => {
+    assert.match(error.message, /bootstrap\.py/);
+    assert.ok(error.assetURL.endsWith('/bootstrap.py'));
+    return true;
+  });
+});
+
+for (const [asset, page] of [
+  ['bootstrap.py', '<!-- Gateway sign-in -->\n<!doctype html><html>Sign in</html>'],
+  ['Start-Taskboard.command', '<?xml version="1.0"?>\n<html xmlns="http://www.w3.org/1999/xhtml">Sign in</html>'],
+]) {
+  test(`mislabeled login markup with a preamble is rejected for ${asset}`, async () => {
+    const normal = assets();
+    const fetchImpl = (url, opts) => new URL(url).pathname.endsWith('/' + asset)
+      ? Promise.resolve(new Response(page, { headers: { 'Content-Type': 'text/plain' } }))
+      : normal(url, opts);
+    await assert.rejects(createDownloadPackage({ snapshot, task, platform: 'macos' }, { ...options(), fetchImpl }), error => {
+      assert.match(error.message, /HTML|sign-in/i);
+      assert.ok(error.assetURL.endsWith('/' + asset));
+      return true;
+    });
+  });
+}
+
 test('demo, unavailable board and stale task downloads fail before fetching assets', async () => {
   const failFetch = async () => assert.fail('invalid request must not fetch runtime');
   for (const board of [{ ...snapshot, demo: true }, { ...snapshot, repository: '' }, { ...snapshot, tasks: [] }]) {
@@ -178,7 +233,7 @@ for (const deployment of deployments) test(`publisher text and downloaded packag
       pageURL: deployment.pageURL,
       fetchImpl: async (url, fetchOptions) => {
         fetched.push(String(url));
-        assert.equal(fetchOptions.credentials, 'omit');
+        assert.equal(fetchOptions.credentials, 'same-origin');
         const response = expectedAssets.get(String(url));
         return response === undefined ? new Response('wrong deployment path', { status: 404 }) : new Response(response);
       },

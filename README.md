@@ -127,6 +127,11 @@ Actions 确认后的任务包被冻结。编辑 Issue 正文不会改变已确�
 
 执行包包含启动脚本、Python runtime 源码包和任务定位信息，不包含 GitHub token 或 agent 登录。它是可检查的脚本 ZIP，不是签名安装程序或独立 `.exe`。macOS / Windows 可能显示下载来源或运行确认；Linux 可能需要在文件属性中允许作为程序运行。按公司设备策略处理，工具不会关闭这些系统保护。
 
+<a id="macos-first-open"></a>
+**macOS 首次打开**：当前 `.command` 未经过 Developer ID 签名和 Apple 公证。若提示“无法验证开发者”或“无法检查恶意软件”，先核对下载来源及文件完整性；这类提示本身不等于检测到了恶意代码。确认可信且公司设备政策允许后，尝试打开文件，再前往 **系统设置 → 隐私与安全性 → 仍要打开**，对该文件确认“打开”。受管设备可能需要 IT 协助。若提示“将损坏电脑”、文件已损坏或被识别为恶意软件，请停止运行并联系维护者或 IT，不使用上述步骤。[Apple 官方指引](https://support.apple.com/en-us/102445)
+
+下载和启动时的 runtime SHA-256 校验检查运行包内容一致性，不替代 Developer ID 签名、公证或恶意软件检测。
+
 <a id="first-run"></a>
 ### 3.2 首次运行：向导引导安装和登录
 
@@ -276,6 +281,15 @@ Runner 需要 Python 3.11+、GitHub CLI；`Check task board` 工作流还需要 
 任务与命令评论触发更新；成果分片评论先保留在 Issue，最终提交命令触发处理。工作流也支持手动运行，以及每小时第 17、47 分钟的恢复扫描；调度不保证实时。
 
 公司禁用 Pages build API 时，已生成的 `gh-pages` 可交给公司现有 Pages 发布流程。状态分支由 controller 唯一写入，不要手工修改 `taskboard-state/state.json`。部署机制详见 [GitHub-only 说明](docs/github-only.md)。
+
+<a id="download-troubleshooting"></a>
+### 6.4 内网下载报错
+
+下载资源请求保留 **Pages 站点同源的 SSO cookie**，仍拒绝重定向和跨域请求。页面会显示失败资源的路径和链接；单凭 `fetch error` 不能确定公司环境的具体原因。
+
+1. 打开错误中的资源链接。若进入登录页，完成 Pages / SSO 登录后返回看板重试；若资源仍返回登录页面，请让管理员检查认证代理。
+2. 若返回 404，检查目标 `gh-pages/downloads/` 是否包含 `runtime.json`、`taskboard-runtime.zip`、`bootstrap.py` 和各系统启动文件，并确认已发布最新站点。
+3. 若浏览器提示证书错误、连接失败或代理拦截，将资源路径、错误和 HTTP 状态交给管理员检查 TLS / 代理配置；不要关闭证书或浏览器安全检查。
 
 <a id="setup"></a>
 ## 7. 高级配置与 CLI
@@ -452,7 +466,8 @@ Hook 通过 stdin 获取真实 session 与 cwd，写入本地关联，并把提�
 | 现象 | 处理 |
 | --- | --- |
 | ZIP 双击后只看到文件列表 | 先完整解压，再运行对应 `Start-Taskboard` 文件，保留其他文件在同一目录 |
-| 系统提示无法运行下载脚本 | 按公司设备策略处理下载来源/运行确认；Linux 检查文件属性中的运行权限，不关闭系统保护 |
+| 系统提示无法运行下载脚本 | macOS 先按[首次打开说明](#macos-first-open)区分警告类型；Linux 检查文件属性中的运行权限，遵守公司设备策略 |
+| Download publisher setup / 任务下载显示 `fetch error` | 打开错误中的资源链接，按[内网下载排查](#download-troubleshooting)检查 SSO、资源发布、TLS 和代理；所有 OS 都失败时先检查共享下载资源 |
 | 提示缺少工具，安装后仍找不到 | 返回向导重试；PATH 尚未更新时重新打开启动文件。公司受管设备可能需要管理员安装 |
 | 右上角没有显示 GitHub 用户名 | 这是纯静态模式的预期行为。**GitHub account** 打开 GitHub 自己的账号页面；发布和执行使用本地 GitHub CLI 的账号 |
 | 迁移后，复制指引或下载包仍指向旧仓库 | 按[部署核对步骤](#deployment-check)检查目标 `tasks.json`、Pages 发布来源和 `request.json`，在目标仓库重新运行 controller |
@@ -499,6 +514,7 @@ python3 -m http.server 8080 --bind 127.0.0.1 --directory site
 - 只支持独立 `subtask` 委派，不支持完整会话迁移、未提交工作区补丁或任意递归转派。
 - 本地工具校验哈希、路径、修改范围和执行关联；`write_paths` 是提交前检查，不是操作系统 ACL。任务代码和验收命令使用本机权限，应来自你已授权的任务。
 - 成员保留各自 GitHub 与 provider 登录；Pages、任务包和下载脚本不携带这些凭据或原会话日志。
+- 若要改善 macOS 大规模分发的首次运行体验，后续需要固定版本、经过 Developer ID 签名和 Apple 公证的启动应用；当前尚未提供。产物仍可通过 GitHub 分发，无需增加自建后台。[Apple 公证要求](https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution)
 - Python/Node 测试以临时 Git 仓库和模拟 GitHub/provider 边界验证流程，不消耗真实模型额度。Windows / Linux 原生桌面安装与双击流程、公司 SSO、实际 runner/Pages 和两账号计费仍需在目标环境联调；不声称这些已完成现场验证。
 
 | 文件 | 内容 |

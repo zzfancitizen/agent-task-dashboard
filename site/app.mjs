@@ -536,6 +536,7 @@ function openDownload({ task, action = 'run' } = {}) {
     if (board !== snapshot || loading || lastError) {
       error.textContent = 'Task data has changed. Close this window and select the task again.';
       error.hidden = false;
+      error.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     busy = true;
@@ -555,7 +556,14 @@ function openDownload({ task, action = 'run' } = {}) {
     } catch (issue) {
       if (!active) return;
       error.textContent = issue.message || 'Download failed. Check your connection and retry.';
+      try {
+        const asset = new URL(issue.assetURL);
+        if (asset.origin === location.origin && ['https:', 'http:'].includes(asset.protocol)) {
+          error.append(document.createTextNode(' '), link('Inspect failed asset', asset.href, 'text-button', 'arrow-up'));
+        }
+      } catch { /* Only locally constructed same-origin asset links are shown. */ }
       error.hidden = false;
+      error.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } finally {
       busy = false;
       if (active) {
@@ -576,6 +584,7 @@ function openDownload({ task, action = 'run' } = {}) {
     radio.addEventListener('change', () => {
       selectedPlatform = value;
       platformNote.textContent = platform.note;
+      if (platform.helpURL) platformNote.append(document.createTextNode(' '), link('Apple first-open guidance', platform.helpURL, 'text-button', 'arrow-up'));
       download.replaceChildren(icon('download'), document.createTextNode(`Download for ${platform.label}`));
       download.disabled = busy;
       success.hidden = true;
